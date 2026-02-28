@@ -6,12 +6,28 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "gatewayUrl": { "type": "string" },
-      "providerId": { "type": "string", "default": "lobster-shell" },
-      "timeoutMs": { "type": "number", "minimum": 1000, "maximum": 600000 },
-      "skipTools": { "type": "array", "items": { "type": "string" } }
+      "gatewayUrl": {
+        "type": "string"
+      },
+      "providerId": {
+        "type": "string",
+        "default": "lobster-shell"
+      },
+      "timeoutMs": {
+        "type": "number",
+        "minimum": 1000,
+        "maximum": 600000
+      },
+      "skipTools": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
     },
-    "required": ["gatewayUrl"]
+    "required": [
+      "gatewayUrl"
+    ]
   },
   "uiHints": {
     "gatewayUrl": {
@@ -31,5 +47,8 @@
       "label": "Skip Tools",
       "help": "Tool names to skip policy evaluation"
     }
-  }
+  },
+  "skills": [
+    "./skills"
+  ]
 }

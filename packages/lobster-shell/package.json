@@ -1,6 +1,6 @@
 {
   "name": "@simplaix/lobster-shell",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Lobster Shell plugin for Simplaix Gateway tool policy & audit integration",
   "openclaw": {
@@ -8,5 +8,10 @@
   },
   "peerDependencies": {
     "lobster-shell": ">=2026.1.26"
-  }
+  },
+  "files": [
+    "index.ts",
+    "openclaw.plugin.json",
+    "skills/**"
+  ]
 }
