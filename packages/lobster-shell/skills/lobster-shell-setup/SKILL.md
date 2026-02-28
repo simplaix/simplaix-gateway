@@ -1,6 +1,6 @@
 ---
 name: lobster-shell-setup
-description: End-to-end setup for Simplaix Gateway + @simplaix/lobster-shell in OpenClaw, including GitHub clone, plugin install, openclaw.json config, Cloudflare tunnel, and mobile /pair onboarding. Use when users ask to install/configure lobster-shell, fix setup issues, or bootstrap approval flow.
+description: End-to-end setup for Simplaix Gateway + @simplaix/lobster-shell in OpenClaw, including GitHub clone, pre-plugin openclaw.json env/config, plugin install, Cloudflare tunnel, and mobile /pair onboarding. Use when users ask to install/configure lobster-shell, fix setup issues, or bootstrap approval flow.
 ---
 
 Execute setup in this order:
@@ -13,11 +13,11 @@ Execute setup in this order:
 6. Start gateway-app (`3000`) and obtain `ADMIN_JWT`
 7. Register agent and capture `runtime_token` (`art_xxx`)
 8. Seed policies and capture `PROVIDER_ID`
-9. Install plugin: `openclaw plugins install @simplaix/lobster-shell`
-10. Configure `~/.openclaw/openclaw.json` with:
+9. Configure `~/.openclaw/openclaw.json` with:
    - `plugins.entries.lobster-shell.config.gatewayUrl`
    - `providerId`
    - `env.vars.SIMPLAIX_AGENT_RUNTIME_TOKEN`
+10. Install plugin: `openclaw plugins install @simplaix/lobster-shell`
 11. Start Cloudflare tunnel first, then restart gateway
 12. Give user gateway-app URL and guide `/pair`
 

@@ -20,8 +20,8 @@
 6. Start gateway-app (3000) and log in to get `ADMIN_JWT`
 7. Register an agent and get `runtime_token` (`art_xxx`)
 8. Seed policies and get `providerId`
-9. Install OpenClaw plugin via command: `openclaw plugins install @simplaix/lobster-shell`
-10. Update `~/.openclaw/openclaw.json` (`gatewayUrl` + `providerId` + `SIMPLAIX_AGENT_RUNTIME_TOKEN`)
+9. Update `~/.openclaw/openclaw.json` (`gatewayUrl` + `providerId` + `SIMPLAIX_AGENT_RUNTIME_TOKEN`)
+10. Install OpenClaw plugin via command: `openclaw plugins install @simplaix/lobster-shell`
 11. Start Cloudflare tunnel (tunnel first, then restart gateway)
 12. Send user the `gateway-app` URL + `/pair` mobile onboarding steps
 
@@ -145,17 +145,7 @@ Save the printed `PROVIDER_ID`.
 
 ---
 
-## 9) Install OpenClaw plugin (command-based as required)
-
-```bash
-openclaw plugins install @simplaix/lobster-shell
-```
-
-If a same-name plugin directory already exists, back it up/remove it before reinstalling.
-
----
-
-## 10) Update OpenClaw config
+## 9) Update OpenClaw config (do this before plugin install)
 
 Edit `~/.openclaw/openclaw.json` and ensure:
 
@@ -182,7 +172,17 @@ Edit `~/.openclaw/openclaw.json` and ensure:
 }
 ```
 
-> `gatewayUrl` is required. Missing it will fail plugin config validation.
+> `gatewayUrl` is required. Missing it may cause plugin startup/config validation errors right after install.
+
+---
+
+## 10) Install OpenClaw plugin (command-based as required)
+
+```bash
+openclaw plugins install @simplaix/lobster-shell
+```
+
+If a same-name plugin directory already exists, back it up/remove it before reinstalling.
 
 ---
 
