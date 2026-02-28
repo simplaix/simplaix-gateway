@@ -13,13 +13,13 @@ An enterprise-grade Agent Gateway that provides identity, security, credential m
 - **Human-in-the-Loop Confirmation** -- SSE-based real-time confirmation workflow for sensitive operations
 - **Comprehensive Audit Trail** -- Track every tool call with full context, agent ID, end-user ID, and timing
 - **Multi-Tenancy** -- Tenant isolation across agents, credentials, and users
-- **Credential SDKs** -- Python and TypeScript SDKs for agents to resolve user credentials
+- **Credential SDK** -- Python SDK (`simplaix-gateway`) for MCP transport, user context propagation, and credential resolution
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - pnpm
 - PostgreSQL 17+ (or Docker)
 - Python 3.12+ (for the agent)
@@ -33,7 +33,8 @@ cp .env.example .env
 # Start Gateway + PostgreSQL
 docker compose up -d
 
-# The Gateway is now running at http://localhost:3001
+# Health check
+curl http://localhost:3001/api/health
 ```
 
 ### Option B: Local Development
@@ -48,20 +49,22 @@ cp .env.example .env
 # Start PostgreSQL (via Docker or locally)
 docker compose up -d postgres
 
-# Start the Gateway server
-vc dev
+# Apply migrations
+pnpm db:migrate
 
-# Start the dashboard (in another terminal)
-cd gateway-app
+# Start the Gateway server (serverless-style dev)
 pnpm dev
+# Or use long-running mode (faster local iteration)
+# pnpm dev:server
 
-# Start the Python agent (in another terminal)
-cd gateway-app/agent
-uv run main.py
+# Start dashboard UI (in another terminal)
+pnpm --filter simplaix-gateway-app dev:ui
+
+# Start the Python agent (in another terminal, from repo root)
+cd gateway-app/agent && uv sync && uv run main.py
 
 # Start the docs site (in another terminal)
-cd docs
-pnpm dev
+pnpm --filter docs dev
 ```
 
 ### Configuration
@@ -70,17 +73,23 @@ pnpm dev
 # Server
 PORT=3001
 
-# JWT
+# Gateway JWT verification
 JWT_SECRET=your-secret-key
+JWT_ISSUER=simplaix-gateway
+JWT_AUDIENCE=simplaix-gateway
 
 # Database (PostgreSQL)
 DATABASE_URL=postgresql://gateway:gateway@localhost:5432/gateway
 
-# Credential encryption (64-char hex string)
+# Bootstrap admin (first startup)
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=changeme123
+
+# Credential encryption (required in production, optional in local dev)
 CREDENTIAL_ENCRYPTION_KEY=your-64-char-hex-key
 
 # Default MCP server (fallback)
-MCP_SERVER_URL=http://localhost:8080
+MCP_SERVER_URL=http://localhost:3001
 ```
 
 ## Supported Agent Protocols
@@ -255,12 +264,18 @@ POST /api/v1/admin/tool-providers
 Access to tool providers is controlled via ACL rules:
 
 ```bash
-# Grant access to a specific agent
-POST /api/v1/admin/tool-providers/:id/access
-{ "agentId": "agent-123" }
+# Create an access rule (user/agent scoped)
+POST /api/v1/admin/provider-access
+{
+  "subjectType": "agent",
+  "subjectId": "agent-123",
+  "providerId": "provider-123",
+  "action": "allow",
+  "toolPattern": "*"
+}
 
-# List access rules
-GET /api/v1/admin/tool-providers/:id/access
+# List rules for a provider
+GET /api/v1/admin/provider-access/by-provider/:providerId
 ```
 
 ### Request Flow
@@ -279,7 +294,7 @@ sequenceDiagram
     participant Audit as Audit Service
     participant MCP as Upstream MCP
 
-    C->>GW: POST /v1/mcp-proxy/:providerId/mcp<br/>Authorization: Bearer art_xxx
+    C->>GW: POST /api/v1/mcp-proxy/:providerId/mcp<br/>Authorization: Bearer art_xxx
     GW->>Auth: Authenticate (Runtime Token)
     Auth-->>GW: Agent context
 
@@ -295,7 +310,7 @@ sequenceDiagram
         GW->>RP: Pause request
         RP->>SSE: Emit CONFIRMATION_REQUIRED
         SSE->>U: Show decision card
-        U->>GW: POST /v1/confirmation/:id/confirm
+        U->>GW: POST /api/v1/confirmation/:id/confirm
         GW->>RP: Resume
     end
 
@@ -331,12 +346,12 @@ sequenceDiagram
 
     Note over User,Agent: 1. User connects a service
     User->>FE: Click "Connect Gateway API"
-    FE->>GW: POST /v1/credentials/jwt
+    FE->>GW: POST /api/v1/credentials/jwt
     GW->>Vault: Store encrypted credential
 
     Note over User,Agent: 2. User chats with agent
     User->>FE: "Show me all agents"
-    FE->>GW: POST /v1/agents/:id/invoke + JWT
+    FE->>GW: POST /api/v1/agents/:id/invoke + JWT
 
     Note over GW: 3. Gateway pre-checks credentials
     GW->>Vault: Resolve requiredCredentials
@@ -372,17 +387,17 @@ Supported auth types: `oauth2`, `api_key`, `jwt`, `basic`.
 
 Agents declare `requiredCredentials` in their configuration. The Gateway resolves these before forwarding requests:
 
-- **Agent invoke route** (`/v1/agents/:id/invoke`): Pre-checks credentials. Returns `CREDENTIALS_REQUIRED` if missing, or injects `X-Credential-*` headers if available.
-- **MCP proxy** (`/v1/mcp-proxy/:providerId/mcp`): Same pattern -- resolves and injects credentials into upstream headers.
+- **Agent invoke route** (`/api/v1/agents/:id/invoke`): Pre-checks credentials. Returns `CREDENTIALS_REQUIRED` if missing, or injects `X-Credential-*` headers if available.
+- **MCP proxy** (`/api/v1/mcp-proxy/:providerId/mcp`): Same pattern -- resolves and injects credentials into upstream headers.
 
 ### Credential SDK
 
 The Python SDK lets agent code access credentials transparently:
 
 ```python
-from simplaix_credential_sdk import create_credential_client
+from simplaix_gateway.credentials import create_credential_client
 
-client = create_credential_client(gateway_url="http://localhost:3001/api", api_key="gk_xxx")
+client = create_credential_client(gateway_api_url="http://localhost:3001")
 
 # When running behind the Gateway, credentials arrive via headers -- zero network calls
 token = await client.get_credential("gateway_api")
@@ -397,7 +412,7 @@ The SDK checks injected credentials from Gateway headers first, then falls back 
 
 The agent invoke endpoint is protocol-agnostic -- it forwards requests to any HTTP-based agent runtime and supports both JSON and SSE streaming responses.
 
-When the Gateway invokes an agent (via `/v1/agents/:id/invoke`), it performs a full pre-flight:
+When the Gateway invokes an agent (via `/api/v1/agents/:id/invoke`), it performs a full pre-flight:
 
 1. **Authenticate** the user via JWT
 2. **Load agent** and check tenant isolation + kill switch
@@ -671,54 +686,20 @@ erDiagram
 
 ```
 simplaix-gateway/
-  Dockerfile                    # Multi-stage Docker build
-  docker-compose.yml            # Gateway + PostgreSQL
-  src/                          # Gateway server (Hono on Vercel)
-    routes/                     # API route handlers
-      admin.ts                  # Agent + user management
-      agent.ts                  # Agent invocation + credential pre-check
-      auth.ts                   # Credential verification, profile, password change
-      credentials.ts            # Credential CRUD + resolution
-      credential-providers.ts   # Credential provider config
-      api-keys.ts               # Gateway API key management
-      mcp-proxy.ts              # MCP proxy (Streamable HTTP)
-      tool-providers.ts         # Tool provider CRUD
-      provider-access.ts        # Provider access control (ACL)
-      confirmation.ts            # Confirmation workflow
-      audit.ts                  # Audit log queries
-      stream.ts                 # SSE real-time events
-    services/                   # Business logic
-      agent.service.ts          # Agent CRUD + runtime token management
-      auth.service.ts           # JWT verification (issuance is in gateway-app)
-      credential.service.ts     # Credential storage + resolution
-      credential-provider.service.ts
-      encryption.service.ts     # AES-256-GCM encryption
-      mcp-proxy.service.ts      # MCP forwarding + credential injection
-      tool-provider.service.ts  # Tool provider CRUD
-      provider-access.service.ts # Provider ACL management
-      policy.service.ts         # Policy evaluation
-      audit.service.ts          # Audit logging
-      api-key.service.ts        # API key management
-      user.service.ts           # User management
-      pauser.service.ts         # Request pausing for confirmations
-    middleware/                  # Hono middleware
-      auth.ts                   # JWT + API key + runtime token auth
-      policy.ts                 # Policy enforcement
-      audit.ts                  # Audit logging
-    db/                         # Database (Drizzle ORM)
-      schema.ts                 # PostgreSQL schema
-      index.ts                  # DB initialization
-    types/                      # TypeScript types
-  gateway-app/                  # Next.js dashboard + AI assistant
-    src/app/                    # App Router pages
-    src/components/             # React components
-    src/hooks/                  # CopilotKit tool renderers
-    agent/                      # Python agent (Strands + AG-UI)
-      main.py                   # Agent with gateway management tools
-      gateway_client.py         # Gateway API client
+  src/                          # Gateway API (Hono)
+    routes/                     # Route modules (admin, agent, mcp, auth, ...)
+    services/                   # Domain services (auth, policy, audit, provider access, ...)
+    middleware/                 # Auth, policy, request/audit middleware
+    db/                         # Drizzle schema + DB bootstrap
+    modules/                    # Shared domain modules (authz, providers)
+  gateway-app/                  # Next.js dashboard + embedded Python agent
+    src/                        # Frontend app
+    agent/                      # Python runtime used by the dashboard
+  simplaix-approval-app/        # Expo mobile approval app
+  docs/                         # Public docs site
   packages/
-    credential-sdk-python/      # Python credential SDK
-  docs/                         # Documentation site (Fumadocs)
-    content/docs/               # MDX documentation pages
-    src/                        # Next.js app for docs
+    simplaix-gateway-py/        # Python SDK (`simplaix-gateway`)
+    lobster-shell/              # Shell/client integration package
+  scripts/                      # Local tooling scripts
+  data/                         # Seed/demo data
 ```
