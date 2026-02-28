@@ -1,0 +1,76 @@
+---
+title: Python Credential SDK
+description: Python SDK for agents to transparently resolve user credentials from the Gateway.
+---
+
+The Python credential SDK lets agent code access user credentials transparently, either from injected Gateway headers or via the Gateway API.
+
+## Installation
+
+```bash
+pip install simplaix-credential-sdk
+```
+
+## Quick Start
+
+```python
+from simplaix_credential_sdk import create_credential_client
+
+client = create_credential_client(
+    gateway_url="http://localhost:3001/api",
+    api_key="gk_xxx"
+)
+
+# When running behind the Gateway, credentials arrive via headers -- zero network calls
+token = await client.get_credential("gateway_api")
+```
+
+## How It Works
+
+The SDK uses a two-tier resolution strategy:
+
+1. **Header injection (preferred):** When an agent runs behind the Gateway, credentials are injected as `X-Credential-*` headers. The SDK reads these directly -- no network call needed.
+2. **API fallback:** If headers aren't present, the SDK calls the Gateway's credential resolution API.
+
+## Starlette Middleware
+
+The SDK provides Starlette middleware for automatic context setup:
+
+```python
+from simplaix_credential_sdk import create_credential_client
+
+client = create_credential_client(
+    gateway_url="http://localhost:3001/api",
+    api_key="gk_xxx"
+)
+
+# Add middleware to your Starlette/FastAPI app
+app.add_middleware(client.starlette_middleware())
+```
+
+The middleware automatically extracts `X-Credential-*` headers and makes them available through the SDK's `get_credential()` method.
+
+## Usage in Agent Code
+
+```python
+from simplaix_credential_sdk import create_credential_client
+
+client = create_credential_client(
+    gateway_url="http://localhost:3001/api",
+    api_key="gk_xxx"
+)
+
+async def handle_request(request):
+    # Resolve a credential -- checks headers first, then falls back to API
+    gateway_token = await client.get_credential(
+        "gateway_api",
+        user_id=request.headers.get("X-User-Id")
+    )
+
+    # Use the credential
+    response = await httpx.get(
+        "https://api.example.com/data",
+        headers={"Authorization": f"Bearer {gateway_token}"}
+    )
+    return response.json()
+```

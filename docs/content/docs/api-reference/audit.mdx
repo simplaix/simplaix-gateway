@@ -1,0 +1,60 @@
+---
+title: Audit Logs
+description: Query and retrieve audit logs for tool calls and operations.
+---
+
+The audit service tracks every tool call with full context and timing. All audit endpoints require JWT authentication.
+
+## Query Logs
+
+```bash
+GET /api/v1/audit/logs?userId=xxx&toolName=xxx&status=completed&limit=50
+Authorization: Bearer <jwt>
+```
+
+### Query Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `userId` | string | Filter by user ID |
+| `toolName` | string | Filter by tool name |
+| `status` | string | Filter by status (`pending`, `completed`, `failed`, `confirmed`, `rejected`) |
+| `limit` | number | Max results (default: 50) |
+
+**Response** `200 OK`
+
+```json
+[
+  {
+    "id": "log_...",
+    "userId": "usr_...",
+    "toolName": "get_balance",
+    "arguments": { "account_id": "user123" },
+    "result": { ... },
+    "status": "completed",
+    "confirmationId": "cfm_...",
+    "duration": 245,
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  }
+]
+```
+
+Logs for tool calls that required human confirmation include a `confirmationId` linking to the confirmation record.
+
+## Get Single Log
+
+```bash
+GET /api/v1/audit/logs/:id
+Authorization: Bearer <jwt>
+```
+
+## Statistics
+
+Retrieve aggregate audit statistics.
+
+```bash
+GET /api/v1/audit/stats
+Authorization: Bearer <jwt>
+```
+
+Returns counts grouped by status, tool name, and time period.

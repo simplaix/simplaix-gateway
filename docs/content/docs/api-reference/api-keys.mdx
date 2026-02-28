@@ -1,0 +1,61 @@
+---
+title: API Keys
+description: Create, list, and revoke Gateway API keys (gk_) for server-to-server authentication.
+---
+
+All API key management endpoints require JWT authentication (admin).
+
+## Create API Key
+
+```bash
+POST /api/v1/admin/api-keys
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "name": "Agent Server",
+  "scopes": ["credentials:resolve"]
+}
+```
+
+**Response** `201 Created`
+
+```json
+{
+  "id": "key_...",
+  "key": "gk_xxx...",
+  "name": "Agent Server",
+  "scopes": ["credentials:resolve"],
+  "keyPrefix": "gk_xxxx",
+  "isActive": true,
+  "createdAt": "2025-01-01T00:00:00.000Z"
+}
+```
+
+The full `key` value is only returned at creation time. Store it securely.
+
+## Available Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `credentials:resolve` | Resolve credentials for a user |
+| `credentials:read` | Read credential metadata |
+| `credentials:write` | Store or update credentials |
+
+## List API Keys
+
+```bash
+GET /api/v1/admin/api-keys
+Authorization: Bearer <jwt>
+```
+
+Returns key metadata including prefix, name, scopes, and status. The full key is never returned.
+
+## Revoke API Key
+
+```bash
+DELETE /api/v1/admin/api-keys/:id
+Authorization: Bearer <jwt>
+```
+
+Revoking an API key immediately invalidates it. Any agent runtimes using it will receive authentication errors.

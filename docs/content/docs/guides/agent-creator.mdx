@@ -1,0 +1,611 @@
+---
+title: Agent Creator
+description: Build AI agents that connect to Simplaix Gateway for identity, credential management, and tool routing.
+---
+
+This guide is for developers who **build AI agents** (MCP servers, CopilotKit agents, Strands/AG-UI agents, or custom HTTP services) and want to register them on the Simplaix Gateway for identity management, credential injection, and policy-enforced tool routing.
+
+## Overview
+
+As an Agent Creator, you will:
+
+1. **Register** your agent on the Gateway (get an Agent ID and Runtime Token)
+2. **Configure access** -- an admin grants your agent access to specific providers and tools
+3. **Connect** to the Gateway's Unified MCP Endpoint to discover and call all authorized tools
+4. **Receive** identity and credential headers injected by the Gateway
+5. **Optionally** use the Credential SDK to resolve user credentials
+
+## Quick Start
+
+### Step 1: Get a Gateway Account
+
+Register or log in to the Gateway to get access.
+
+<Tabs items={['Via Interface', 'Via Commands']}>
+<Tab value="Via Interface">
+
+1. Open the Gateway dashboard in your browser (e.g. `http://localhost:3000`)
+2. On the **Sign In** page, enter your **Email** and **Password**
+3. Click **Sign In** to access the dashboard
+
+> **Note:** Account registration is currently done via the API. Once registered, you can log in through the dashboard.
+
+</Tab>
+<Tab value="Via Commands">
+
+```bash
+# Register a new account
+curl -X POST http://localhost:3001/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "creator@example.com", "password": "securepass123", "name": "Agent Creator"}'
+
+# Login (returns JWT)
+curl -X POST http://localhost:3001/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "creator@example.com", "password": "securepass123"}'
+# Response: { "token": "eyJ...", "user": { "id": "...", ... } }
+```
+
+Save the `token` value -- you'll need it for all admin API calls.
+
+</Tab>
+</Tabs>
+
+### Step 2: Register Your Agent
+
+<Tabs items={['Via Interface', 'Via Commands']}>
+<Tab value="Via Interface">
+
+1. In the dashboard, go to the **Agents** tab
+2. Click the **Create Agent** button in the top-right corner
+3. Fill in the form:
+   - **Name** (required) -- a display name for your agent (e.g. "My Finance Agent")
+   - **Upstream URL** (required) -- the URL of your agent's HTTP service (e.g. `http://localhost:8000`). You can use a placeholder and update it later.
+   - **Description** -- optional description of what your agent does
+   - **Require confirmation for tool calls** -- check this if you want tool calls to require admin confirmation before execution
+4. Click **Create Agent**
+5. A dialog will appear with your **Agent Runtime Token** (`art_xxx`). **Copy and save it immediately** -- it is only shown once.
+
+</Tab>
+<Tab value="Via Commands">
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/agents \
+  -H "Authorization: Bearer <your-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Finance Agent",
+    "upstreamUrl": "http://localhost:8000",
+    "description": "Handles financial queries and transactions",
+    "requiredCredentials": [
+      { "serviceType": "stripe_api", "description": "Stripe API access" }
+    ]
+  }'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "agent": {
+    "id": "abc123",
+    "name": "My Finance Agent",
+    "upstreamUrl": "http://localhost:8000",
+    "isActive": true,
+    "runtimeTokenPrefix": "art_xKz2",
+    "requiredCredentials": [{ "serviceType": "stripe_api", "description": "Stripe API access" }]
+  },
+  "runtime_token": "art_xKz2AbCdEfGhIjKlMnOpQrStUvWxYz12345"
+}
+```
+
+**Save the `runtime_token`** -- it is shown only once and serves as your agent's identity card.
+
+</Tab>
+</Tabs>
+
+### Step 3: Configure Provider Access
+
+Agents operate on a **whitelist model** -- by default they cannot access any provider. An admin must explicitly grant access.
+
+<Tabs items={['Via Interface', 'Via Commands']}>
+<Tab value="Via Interface">
+
+1. In the dashboard, go to the **Agents** tab
+2. Click on your agent card to open the **Agent Detail Panel**
+3. Under **Provider Access**, you'll see all available providers
+4. Toggle a provider to **enabled** to grant access
+5. Optionally select specific tools within that provider (default: all tools)
+6. Click **Save Changes**
+
+</Tab>
+<Tab value="Via Commands">
+
+```bash
+# Grant agent access to specific providers and tools
+curl -X PUT http://localhost:3001/api/v1/admin/provider-access/agent/<agent-id> \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rules": [
+      { "providerId": "slack-provider-id", "action": "allow", "toolPattern": "*" },
+      { "providerId": "github-provider-id", "action": "allow", "toolPattern": "github_read_*" }
+    ]
+  }'
+```
+
+In this example, the agent gets full access to the Slack provider but only read tools from the GitHub provider.
+
+</Tab>
+</Tabs>
+
+### Step 4: Build Your Agent
+
+Your agent connects to the Gateway's **Unified MCP Endpoint** -- a single URL that aggregates tools from all providers the agent is authorized to access. The recommended stack is [Strands Agents](https://github.com/strands-agents/sdk-python) + [AG-UI](https://github.com/ag-ui-protocol/ag-ui) for SSE streaming.
+
+**Install dependencies:**
+
+```bash
+pip install simplaix-gateway \
+  "strands-agents[OpenAI]>=1.15.0" "ag_ui_strands~=0.1.0" \
+  "fastapi>=0.115.12" "uvicorn>=0.34.3"
+```
+
+**Create a `.env` file** with the Runtime Token from Step 2:
+
+```bash
+OPENAI_API_KEY=sk-...
+GATEWAY_API_URL=http://localhost:3001
+AGENT_RUNTIME_TOKEN=art_yourAgentToken...
+```
+
+**Create your agent** (`main.py`):
+
+```python
+import os
+
+from ag_ui_strands import StrandsAgent, create_strands_app
+from dotenv import load_dotenv
+from simplaix_gateway.mcp import GatewayMCPTransport
+from simplaix_gateway.middleware import GatewayMiddleware
+from strands import Agent
+from strands.models.openai import OpenAIModel
+from strands.tools.mcp import MCPClient
+
+load_dotenv()
+
+# OpenAI model configuration
+model = OpenAIModel(
+    client_args={"api_key": os.getenv("OPENAI_API_KEY", "")},
+    model_id="gpt-4o",
+)
+
+# Connect to the Gateway's Unified MCP Endpoint
+# GatewayMCPTransport() with no provider_id connects to /api/v1/mcp/mcp
+# which aggregates tools from all providers the agent is authorized to access
+mcp_client = MCPClient(GatewayMCPTransport())
+
+# Create agent with all authorized MCP tools
+agent = Agent(
+    model=model,
+    system_prompt="You are a helpful assistant.",
+    tools=[mcp_client],
+)
+
+# Wrap with AG-UI for SSE streaming
+agui_agent = StrandsAgent(
+    agent=agent,
+    name="my_agent",
+    description="A helpful assistant with MCP tools",
+)
+
+# Creates a FastAPI app with AG-UI SSE streaming
+app = create_strands_app(agui_agent)
+
+# Capture Gateway-injected headers (session token, user context) into ContextVars
+# so the MCP transport can forward them for per-user policy enforcement
+app.add_middleware(GatewayMiddleware)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+```
+
+**Run it:**
+
+```bash
+python main.py
+```
+
+Your agent is now running at `http://localhost:8000`. This is the **Upstream URL** you registered in Step 2. The Gateway forwards requests to this URL and streams SSE responses back to the frontend.
+
+## Unified MCP Endpoint
+
+The Unified MCP Endpoint (`/api/v1/mcp/mcp`) is the **recommended** way for agents to access tools through the Gateway. Instead of connecting to each provider separately, your agent makes a single connection and gets all authorized tools automatically.
+
+### How It Works
+
+```
+Agent → Unified Endpoint → Gateway resolves provider → Upstream MCP Server
+```
+
+When your agent calls `tools/list`, the Gateway:
+
+1. Fetches tool lists from all providers the agent can access (in parallel)
+2. Filters out tools denied by policy rules
+3. Returns a merged, deduplicated tool list
+
+When your agent calls `tools/call`, the Gateway:
+
+1. Resolves which upstream provider owns the requested tool
+2. Checks provider-level ACL (is this agent allowed?)
+3. Evaluates tool-level policy (allow / deny / require confirmation)
+4. Forwards the call to the correct upstream provider
+5. Audits the call (attributed to the end-user)
+
+### Unified vs Per-Provider Mode
+
+The Python SDK supports both modes via `GatewayMCPTransport`:
+
+```python
+from simplaix_gateway.mcp import GatewayMCPTransport
+
+# Unified mode (recommended) — all authorized tools via one connection
+transport = GatewayMCPTransport()
+# Connects to: /api/v1/mcp/mcp (all authorized providers)
+
+# Selected providers — restrict to specific providers
+transport = GatewayMCPTransport(provider_id=["slack-provider-id"])
+# Connects to: /api/v1/mcp/mcp?providers=slack-provider-id
+```
+
+**Use unified mode** when your agent needs tools from multiple providers or when you want the simplest setup. **Pass `provider_id`** as a list when your agent should only access a specific set of providers.
+
+## Agent-Level MCP Access Control
+
+Agents operate on a **whitelist model** -- they are denied access to all MCP providers by default. An admin must explicitly grant access to each provider and can restrict which tools within that provider the agent can use.
+
+Each access rule specifies a provider, a tool pattern (glob syntax), and an action (`allow`, `deny`, or `require_confirmation`). For example, an agent might be allowed to read from Slack freely but require human confirmation to send messages.
+
+For full details on how rules are evaluated, glob patterns, risk levels, and configuration examples, see [MCP Access Control](/docs/concepts/mcp-access-control).
+
+## Headers Injected by the Gateway
+
+When the Gateway invokes your agent (via `/v1/agents/:id/invoke`), it injects these headers:
+
+| Header | Description |
+|--------|-------------|
+| `X-Gateway-Session-Token` | Signed session JWT carrying the end-user's identity (see [User Context Propagation](#user-context-propagation)) |
+| `X-End-User-ID` | The end-user's ID |
+| `X-User-Id` | Same as above (for SDK middleware compatibility) |
+| `X-End-User-Email` | The end-user's email (if available) |
+| `X-End-User-Roles` | Comma-separated roles (e.g., `admin,user`) |
+| `X-Tenant-ID` | Tenant ID for multi-tenancy isolation |
+| `X-Gateway-Agent-ID` | Your agent's ID (use this when calling back to Gateway) |
+| `X-Gateway-Request-ID` | Unique request ID for tracing |
+| `X-Credential-{serviceType}` | Resolved credential tokens (one per required credential) |
+
+## Agent Runtime Token (art_xxx)
+
+Each agent gets a Runtime Token (`art_xxx`) on creation. This token is the agent's "identity card" for authenticating directly with the Gateway.
+
+### When to Use the Runtime Token
+
+Use the Runtime Token when your agent needs to call back into the Gateway (e.g., to use the MCP Proxy):
+
+```bash
+# Agent calling the Unified MCP Endpoint using its Runtime Token
+curl -X POST http://localhost:3001/api/v1/mcp/mcp \
+  -H "Authorization: Bearer art_xKz2AbCdEfGhIjKlMnOpQrStUvWxYz12345" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
+```
+
+### Regenerating a Token
+
+If your token is compromised, regenerate it (invalidates the old one):
+
+<Tabs items={['Via Interface', 'Via Commands']}>
+<Tab value="Via Interface">
+
+1. In the dashboard, go to the **Agents** tab
+2. Find the agent whose token you want to regenerate
+3. Click the **Regenerate token** button (refresh + key icon) on the agent card
+4. A confirmation dialog warns that the old token will be invalidated. Click **Regenerate Token** to confirm
+5. Copy the new token from the dialog that appears -- it is only shown once
+
+</Tab>
+<Tab value="Via Commands">
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/agents/<agent-id>/regenerate-token \
+  -H "Authorization: Bearer <admin-jwt>"
+# Response: { "runtime_token": "art_newTokenHere..." }
+```
+
+</Tab>
+</Tabs>
+
+## User Context Propagation
+
+When the Gateway invokes your agent on behalf of an end-user, it mints a short-lived **session JWT** (`X-Gateway-Session-Token`) that carries the user's identity, roles, and tenant. The SDK automatically forwards this token back to the MCP proxy so that policy enforcement and audit logging use the **real end-user** — not the agent's identity.
+
+```
+End-User → Gateway (mint session JWT) → Agent → MCP Proxy (verify JWT, enforce per-user policy)
+```
+
+### How it works
+
+1. **`GatewayMiddleware`** captures incoming Gateway headers (session token, user ID, tenant, roles) into ContextVars
+2. **`GatewayMCPTransport`** reads those ContextVars at each MCP connection and forwards the session token via `X-Gateway-Session-Token`
+3. The MCP proxy **verifies the JWT signature** and uses the claims for per-user policy evaluation
+
+This happens automatically when you add `GatewayMiddleware` to your ASGI app (as shown in [Step 4](#step-4-build-your-agent)). The middleware captures the session token and user context from incoming headers, and `GatewayMCPTransport` forwards them on every MCP connection — no manual header wiring needed.
+
+## Using the MCP Proxy
+
+The Gateway provides an MCP Proxy that lets your agent route MCP tool calls through the Gateway with policy enforcement, ACL checks, and audit logging. There are two modes:
+
+| Mode | Endpoint | Use case |
+|------|----------|----------|
+| **Unified** (recommended) | `POST /api/v1/mcp/mcp` | All authorized tools via one connection |
+| **Per-provider** | `POST /api/v1/mcp-proxy/{providerId}/mcp` | Directly target a specific provider |
+
+### Setup
+
+**Step 1: Register a Tool Provider** (admin operation):
+
+<Tabs items={['Via Interface', 'Via Commands']}>
+<Tab value="Via Interface">
+
+1. In the dashboard, go to the **Providers** tab
+2. Click the **Create Provider** button
+3. Fill in the form:
+   - **Name** (required) -- display name (e.g. "Slack Integration")
+   - **Pattern** (required) -- glob pattern to match tool names (e.g. `slack_*` matches all Slack tools)
+   - **Endpoint** (required) -- the upstream MCP server URL (e.g. `http://slack-mcp-server:3000`)
+   - **Authentication** -- select "No Authentication", "Bearer Token", or "API Key" and provide the secret if needed
+   - **Priority** -- higher priority providers match first (default: 0)
+   - **Description** -- optional description
+4. Click **Create Provider**
+
+</Tab>
+<Tab value="Via Commands">
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/tool-providers \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Slack Integration",
+    "pattern": "slack_*",
+    "endpoint": "http://slack-mcp-server:3000",
+    "authType": "bearer",
+    "authSecret": "upstream-secret",
+    "priority": 10,
+    "description": "Routes slack_* tools to Slack MCP server"
+  }'
+# Response: { "provider": { "id": "provider-123", ... } }
+```
+
+</Tab>
+</Tabs>
+
+**Step 2: Grant agent access** to the provider (see [Configure Provider Access](#step-3-configure-provider-access)).
+
+**Step 3: Connect your MCP client:**
+
+```python
+from simplaix_gateway.mcp import GatewayMCPTransport
+from strands import Agent
+from strands.tools.mcp import MCPClient
+
+# Unified mode (recommended) — all authorized tools
+mcp_client = MCPClient(GatewayMCPTransport())
+
+# Or selected providers — target specific provider(s)
+# mcp_client = MCPClient(GatewayMCPTransport(provider_id=["<provider-id>"]))
+
+agent = Agent(model=model, system_prompt="...", tools=[mcp_client])
+```
+
+### What the Proxy Does
+
+For every `tools/call` request, the Gateway:
+
+1. **Authenticates** your agent (via Runtime Token or API key)
+2. **Resolves end-user identity** from the session JWT (or falls back to agent identity)
+3. **Checks ACL** -- is this agent allowed to access this provider?
+4. **Evaluates tool-level policy** -- allow, deny, or require confirmation (using the real end-user's identity)
+5. **Audits** the tool call (attributed to the end-user)
+6. **Forwards** to the upstream MCP server with identity headers
+
+### Confirmation Flow
+
+When a tool call triggers a `require_confirmation` policy, the Gateway:
+
+1. Creates a pending confirmation record
+2. Holds the SSE connection open (up to 5 minutes)
+3. Sends real-time status updates via SSE events
+4. Waits for an admin to confirm or reject the call
+5. Returns the tool result (on confirm) or an error (on reject/timeout)
+
+From the agent's perspective, the tool call simply takes longer -- no special handling is needed. The Gateway manages the entire confirmation lifecycle transparently.
+
+## Credential SDK
+
+If your agent needs user credentials at runtime (API keys, OAuth tokens, etc.), use the Credential SDK.
+
+### How Credential Injection Works
+
+The simplest approach: declare `requiredCredentials` when registering your agent. The Gateway resolves credentials automatically and injects them as `X-Credential-*` headers -- **zero network calls** from your agent code.
+
+```python
+# In your agent handler, just read the header:
+stripe_token = request.headers.get("X-Credential-stripe_api")
+```
+
+### Using the SDK (Fallback)
+
+If you need to resolve credentials programmatically (e.g., outside of a Gateway-invoked request):
+
+**Python** (`pip install simplaix-gateway`):
+
+```python
+from simplaix_gateway.credentials import create_credential_client
+
+# Reads GATEWAY_API_URL and GATEWAY_API_KEY from env automatically
+client = create_credential_client()
+
+# Resolve a single credential
+token = await client.get_credential("stripe_api")
+
+# Resolve multiple credentials (throws if any missing)
+creds = await client.require_all(["stripe_api", "github"])
+stripe = creds["stripe_api"]
+github = creds["github"]
+```
+
+## SSE Streaming Support
+
+The Gateway supports SSE (Server-Sent Events) streaming for agent responses. If your agent returns `Content-Type: text/event-stream`, the Gateway streams the response back to the caller transparently — no extra configuration needed.
+
+The Strands / AG-UI agent from [Step 4](#step-4-build-your-agent) uses SSE by default via `create_strands_app`. The Gateway detects the `text/event-stream` content type and pipes the stream directly to the frontend.
+
+## Agent Management
+
+### Kill Switch
+
+Your agent can be disabled or re-enabled instantly without deletion:
+
+<Tabs items={['Via Interface', 'Via Commands']}>
+<Tab value="Via Interface">
+
+1. In the dashboard, go to the **Agents** tab
+2. Find the agent you want to enable or disable
+3. Click the **power icon** on the agent card
+4. A confirmation dialog appears. Click **Disable** (or **Enable**) to confirm
+5. The agent's badge updates to show its new status. Disabled agents return `403` for all requests.
+
+</Tab>
+<Tab value="Via Commands">
+
+```bash
+# Disable (all requests return 403)
+curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/disable \
+  -H "Authorization: Bearer <jwt>"
+
+# Re-enable
+curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/enable \
+  -H "Authorization: Bearer <jwt>"
+```
+
+</Tab>
+</Tabs>
+
+### Update Configuration
+
+<Tabs items={['Via Interface', 'Via Commands']}>
+<Tab value="Via Interface">
+
+1. In the dashboard, go to the **Agents** tab
+2. Find the agent you want to update and click the **edit icon** (pencil) on the agent card
+3. The **Edit Agent** dialog appears with the current values pre-filled
+4. Update the fields as needed: **Name**, **Upstream URL**, **Description**, or the **Require confirmation** checkbox
+5. Click **Save Changes**
+
+</Tab>
+<Tab value="Via Commands">
+
+```bash
+curl -X PUT http://localhost:3001/api/v1/admin/agents/<id> \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Agent Name",
+    "upstreamUrl": "http://new-server:8000",
+    "requiredCredentials": [
+      { "serviceType": "stripe_api", "description": "Stripe" },
+      { "serviceType": "slack", "description": "Slack notifications" }
+    ]
+  }'
+```
+
+</Tab>
+</Tabs>
+
+## Example: Full Agent with Credential Injection
+
+Here's a complete Python agent that:
+1. Receives requests through the Gateway
+2. Reads injected credentials from headers
+3. Uses those credentials to call external APIs
+
+```python
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import httpx
+
+app = FastAPI()
+
+@app.post("/")
+async def handle(request: Request):
+    body = await request.json()
+    user_message = body.get("message", "")
+
+    # Read Gateway-injected headers
+    user_id = request.headers.get("X-End-User-ID")
+    stripe_key = request.headers.get("X-Credential-stripe_api")
+
+    if not stripe_key:
+        return JSONResponse(
+            {"error": "Stripe credential not available"},
+            status_code=500
+        )
+
+    # Use the credential to call Stripe
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://api.stripe.com/v1/charges",
+            headers={"Authorization": f"Bearer {stripe_key}"},
+            params={"limit": 5}
+        )
+        charges = resp.json()
+
+    return {
+        "response": f"Found {len(charges.get('data', []))} recent charges for user {user_id}"
+    }
+```
+
+Register this agent:
+
+<Tabs items={['Via Interface', 'Via Commands']}>
+<Tab value="Via Interface">
+
+1. Go to the **Agents** tab and click **Create Agent**
+2. Set **Name** to "Stripe Agent" and **Upstream URL** to `http://localhost:8000`
+3. Click **Create Agent** and save the runtime token
+
+> **Note:** To configure `requiredCredentials` (for automatic credential injection), use the API command. The dashboard form does not currently expose this field.
+
+</Tab>
+<Tab value="Via Commands">
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/agents \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Stripe Agent",
+    "upstreamUrl": "http://localhost:8000",
+    "requiredCredentials": [
+      { "serviceType": "stripe_api", "description": "Stripe API key for payment operations" }
+    ]
+  }'
+```
+
+</Tab>
+</Tabs>
+
+Now when a user invokes this agent, the Gateway automatically resolves their Stripe credential and injects it. If the user hasn't connected Stripe yet, the Gateway returns a `401 CREDENTIALS_REQUIRED` response with auth URLs so the frontend can prompt the user.

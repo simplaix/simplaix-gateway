@@ -1,0 +1,15 @@
+{
+  "title": "API Reference",
+  "defaultOpen": true,
+  "pages": [
+    "auth",
+    "agents",
+    "mcp-proxy",
+    "credentials",
+    "credential-providers",
+    "api-keys",
+    "confirmations",
+    "audit",
+    "streaming"
+  ]
+}

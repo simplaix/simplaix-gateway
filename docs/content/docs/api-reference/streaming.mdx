@@ -1,0 +1,65 @@
+---
+title: SSE & Real-time
+description: Server-Sent Events stream for real-time notifications and confirmation workflows.
+---
+
+The Gateway provides a Server-Sent Events (SSE) stream for real-time notifications, primarily used for the human-in-the-loop confirmation workflow.
+
+## SSE Stream
+
+Connect to receive real-time events:
+
+```bash
+GET /api/v1/stream
+Authorization: Bearer <jwt>
+```
+
+This endpoint returns an SSE stream (`text/event-stream`). Events include:
+
+### Event Types
+
+| Event | Description |
+|-------|-------------|
+| `CONFIRMATION_REQUIRED` | A tool call requires human confirmation |
+| `CONFIRMATION_RESOLVED` | A confirmation was confirmed or rejected |
+| `AGENT_INVOKED` | An agent was invoked |
+
+### Example SSE Data
+
+```
+event: CONFIRMATION_REQUIRED
+data: {"id":"cfm_...","toolName":"transfer_money","arguments":{"amount":1000},"risk":"high"}
+
+event: CONFIRMATION_RESOLVED
+data: {"id":"cfm_...","status":"confirmed","confirmedBy":"usr_..."}
+```
+
+## Polling Fallback
+
+For environments that don't support SSE, use the polling endpoint:
+
+```bash
+GET /api/v1/stream/pending
+Authorization: Bearer <jwt>
+```
+
+Returns all current pending confirmation requests as a JSON array.
+
+## Client Usage
+
+### Browser (EventSource)
+
+```javascript
+const eventSource = new EventSource('/api/v1/stream', {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+
+eventSource.addEventListener('CONFIRMATION_REQUIRED', (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Confirmation needed:', data.toolName);
+});
+```
+
+### Dashboard Integration
+
+The Gateway dashboard uses the SSE stream to show real-time confirmation cards. When a `CONFIRMATION_REQUIRED` event arrives, it displays a decision card with tool name, arguments, and risk level.

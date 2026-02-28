@@ -27,3 +27,15 @@ lerna-debug.log*
 # misc
 .DS_Store
 .vercel
+
+# build
+dist/
+
+# database
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# drizzle
+drizzle/
