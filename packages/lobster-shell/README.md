@@ -1,8 +1,8 @@
 # lobster-shell
 
-Lobster Shell plugin for [Simplaix Gateway](../../README.md) &mdash; **tool policy evaluation**, **audit logging**, and **mobile approval pairing**.
+OpenClaw plugin (`@simplaix/lobster-shell`) for [Simplaix Gateway](../../README.md) &mdash; **tool policy evaluation**, **audit logging**, and **mobile approval pairing**.
 
-Every tool call made by a Lobster Shell agent is intercepted:
+Every tool call made by an OpenClaw agent is intercepted:
 
 1. **Before execution** &mdash; the plugin calls the Gateway's `/api/v1/tool-gate/evaluate` endpoint to check policy. The Gateway may `allow`, `deny`, or `require_confirmation` (human-in-the-loop approval). Denied or rejected calls are blocked before the tool runs.
 2. **After execution** &mdash; the plugin calls `/api/v1/tool-gate/audit` to update the audit record with the tool's result, error status, and execution duration.
@@ -107,8 +107,8 @@ curl -s -X POST http://localhost:3001/api/v1/admin/agents \
   -H "Authorization: Bearer $ADMIN_JWT" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "my-lobster-agent",
-    "description": "Lobster Shell agent with policy enforcement"
+    "name": "my-openclaw-agent",
+    "description": "OpenClaw agent with policy enforcement"
   }' | jq .
 ```
 
@@ -117,7 +117,7 @@ Response (the `runtime_token` is shown **once**):
 ```json
 {
   "success": true,
-  "agent": { "id": "agent_abc123", "name": "my-lobster-agent", ... },
+  "agent": { "id": "agent_abc123", "name": "my-openclaw-agent", ... },
   "runtime_token": "art_EkQ2x1z9vL4pMwN5jHsD..."
 }
 ```
@@ -134,7 +134,9 @@ This creates per-tool policy rules (24 rules for built-in tools). The script aut
 
 ### 8. Install & configure the plugin
 
-Add the plugin path to `~/.lobster-shell/lobster-shell.json`:
+#### Option A: Local development (link from source)
+
+Add the plugin path to `plugins.load.paths` in `~/.openclaw/openclaw.json`:
 
 ```jsonc
 {
@@ -143,7 +145,24 @@ Add the plugin path to `~/.lobster-shell/lobster-shell.json`:
       "paths": [
         "/path/to/simplaix-gateway/packages/lobster-shell"
       ]
-    },
+    }
+  }
+}
+```
+
+#### Option B: npm install
+
+```bash
+openclaw plugins install @simplaix/lobster-shell
+```
+
+#### Configure the plugin
+
+Add an entry under `plugins.entries` in `~/.openclaw/openclaw.json`:
+
+```jsonc
+{
+  "plugins": {
     "entries": {
       "lobster-shell": {
         "enabled": true,
@@ -159,10 +178,9 @@ Add the plugin path to `~/.lobster-shell/lobster-shell.json`:
 }
 ```
 
-Set the runtime token as an environment variable:
+Set the runtime token as an environment variable in `~/.openclaw/openclaw.json`:
 
 ```jsonc
-// in lobster-shell.json
 {
   "env": {
     "vars": {
@@ -190,7 +208,7 @@ Then restart the gateway (`pnpm dev:server`) so it picks up the new URL.
 
 ### 10. Verify
 
-Restart Lobster Shell. You should see:
+Restart OpenClaw. You should see:
 
 ```
 [simplaix-gateway] Policy & Audit plugin initialized
@@ -203,7 +221,7 @@ Trigger any tool call and confirm:
 
 ## Configuration reference
 
-### Plugin config (lobster-shell.json)
+### Plugin config (openclaw.json)
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -299,10 +317,10 @@ User sends /pair in WhatsApp/Telegram
 
 The plugin does **not** send `agentId` in request bodies. Instead, the Gateway resolves the agent identity from the `art_xxx` token (sent as `Authorization: Bearer art_xxx`). This ensures the audit log always uses the correct agent registered in the Gateway.
 
-### Lobster Shell hook behavior notes
+### OpenClaw hook behavior notes
 
-- Lobster Shell may call `register()` twice; the plugin guards against duplicate registration.
-- Lobster Shell fires `after_tool_call` twice per tool execution: the first invocation carries the result but no `durationMs`, the second carries both. The plugin only sends the audit on the second (complete) invocation.
+- OpenClaw may call `register()` twice; the plugin guards against duplicate registration.
+- OpenClaw fires `after_tool_call` twice per tool execution: the first invocation carries the result but no `durationMs`, the second carries both. The plugin only sends the audit on the second (complete) invocation.
 - The `after_tool_call` context does not include `sessionKey`, so the plugin uses `toolName` as the correlation key between `before_tool_call` and `after_tool_call`.
 
 ## Gateway admin API reference
@@ -341,7 +359,7 @@ All admin endpoints require a JWT with `admin` or `agent_creator` role.
 ```
 lobster-shell/
   package.json            # npm package metadata (@simplaix/lobster-shell)
-  openclaw.plugin.json    # Lobster Shell plugin manifest (id, config schema, UI hints)
+  openclaw.plugin.json    # OpenClaw plugin manifest (id, config schema, UI hints)
   index.ts                # Plugin entry point (before_tool_call + after_tool_call hooks, /pair command)
   README.md               # This file
 ```
