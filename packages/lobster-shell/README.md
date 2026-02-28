@@ -15,6 +15,8 @@ If the Gateway is unreachable, the plugin **fails open** (tool calls proceed wit
 
 This section describes every step needed to go from zero to a working Gateway + plugin setup.
 
+> Recommended order: start the Cloudflare tunnel **before** starting the gateway server, so `GATEWAY_PUBLIC_URL` is already present when the server boots.
+
 ### 1. Start PostgreSQL
 
 ```bash
@@ -51,7 +53,15 @@ pnpm db:migrate
 
 Migrations are in `drizzle/` and managed by Drizzle Kit.
 
-### 4. Start the gateway
+### 4. Start Cloudflare tunnel (before gateway)
+
+```bash
+./scripts/dev-tunnel.sh    # starts cloudflared, writes GATEWAY_PUBLIC_URL to .env
+```
+
+Run this first so public pairing links and management links are available from the start.
+
+### 5. Start the gateway
 
 ```bash
 pnpm dev:server
@@ -68,7 +78,7 @@ curl http://localhost:3001/api/health
 # {"status":"healthy", ...}
 ```
 
-### 5. Obtain an admin JWT
+### 6. Obtain an admin JWT
 
 JWTs are issued by `gateway-app` (the Next.js dashboard), not by the core gateway. Two options:
 
@@ -100,7 +110,7 @@ Store the token for subsequent steps:
 ADMIN_JWT="<token-from-above>"
 ```
 
-### 6. Register an agent
+### 7. Register an agent
 
 ```bash
 curl -s -X POST http://localhost:3001/api/v1/admin/agents \
@@ -124,7 +134,7 @@ Response (the `runtime_token` is shown **once**):
 
 Save the `runtime_token` &mdash; it is the agent's identity credential.
 
-### 7. Seed tool policies
+### 8. Seed tool policies
 
 ```bash
 ADMIN_JWT="$ADMIN_JWT" AGENT_ID="agent_abc123" bash seed-openclaw-policies.sh
@@ -132,11 +142,9 @@ ADMIN_JWT="$ADMIN_JWT" AGENT_ID="agent_abc123" bash seed-openclaw-policies.sh
 
 This creates per-tool policy rules (24 rules for built-in tools). The script auto-creates a virtual tool provider and prints the `PROVIDER_ID`.
 
-### 8. Install & configure the plugin
+### 9. Install & configure the plugin (OpenClaw)
 
-#### Option A: Local development (link from source)
-
-Add the plugin path to `plugins.load.paths` in `~/.openclaw/openclaw.json`:
+Add the plugin path to `~/.openclaw/openclaw.json`:
 
 ```jsonc
 {
@@ -168,7 +176,7 @@ Add an entry under `plugins.entries` in `~/.openclaw/openclaw.json`:
         "enabled": true,
         "config": {
           "gatewayUrl": "http://localhost:3001",
-          "providerId": "<PROVIDER_ID from step 7>",
+          "providerId": "<PROVIDER_ID from step 8>",
           "timeoutMs": 310000,
           "skipTools": []
         }
@@ -181,6 +189,7 @@ Add an entry under `plugins.entries` in `~/.openclaw/openclaw.json`:
 Set the runtime token as an environment variable in `~/.openclaw/openclaw.json`:
 
 ```jsonc
+// in ~/.openclaw/openclaw.json
 {
   "env": {
     "vars": {
@@ -196,17 +205,24 @@ Or export it in your shell:
 export SIMPLAIX_AGENT_RUNTIME_TOKEN="art_EkQ2x1z9vL4pMwN5jHsD..."
 ```
 
-### 9. (Optional) Cloudflare tunnel for public URLs
+### 10. Gateway app URL for user management
 
-For the `/pair` deep links to be clickable in WhatsApp/Telegram, the gateway needs a public HTTPS URL:
+Start the dashboard app and provide its URL to your users/admins so they can manage the gateway:
 
 ```bash
-./scripts/dev-tunnel.sh    # starts cloudflared, writes GATEWAY_PUBLIC_URL to .env
+cd gateway-app
+cp .env.example .env
+# Set JWT_SECRET and JWT_ISSUER to match the core gateway
+pnpm dev   # default: http://localhost:3000
 ```
 
-Then restart the gateway (`pnpm dev:server`) so it picks up the new URL.
+Share one of these with users who should manage the gateway:
+- Local URL (same machine/LAN): `http://localhost:3000`
+- Public URL (remote access): expose `gateway-app` via your reverse proxy/tunnel and share that HTTPS URL
 
-### 10. Verify
+If you use Cloudflare tunnel for the gateway server, it should already be running from Step 4.
+
+### 11. Verify
 
 Restart OpenClaw. You should see:
 
@@ -367,3 +383,119 @@ lobster-shell/
 ## License
 
 See the Simplaix Gateway repository license.
+
+
+## OpenClaw agent autonomous setup (GitHub + npm plugin install)
+
+This section is for OpenClaw agents to self-provision end-to-end, including user pairing guidance.
+
+### A. Clone gateway source
+
+```bash
+git clone https://github.com/simplaix/agent-gateway.git
+cd agent-gateway
+```
+
+### B. Bring up infra and gateway
+
+```bash
+docker compose up -d postgres
+cp .env.example .env
+# Fill at least: JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD, DATABASE_URL, PORT=3001
+pnpm install --config.auto-install-peers=false
+pnpm db:generate   # if migrate complains about missing meta/journal
+pnpm db:migrate
+pnpm dev:server
+```
+
+Verify:
+
+```bash
+curl http://localhost:3001/api/health
+```
+
+### C. Start gateway-app and obtain admin JWT
+
+```bash
+cd gateway-app
+cp .env.example .env
+# Set JWT_SECRET and JWT_ISSUER to match gateway .env
+# Set GATEWAY_API_URL=http://localhost:3001
+pnpm dev
+```
+
+```bash
+curl -s -X POST http://localhost:3000/api/auth/login   -H "Content-Type: application/json"   -d '{"email":"admin@example.com","password":"<ADMIN_PASSWORD>"}'   | jq -r '.token'
+```
+
+### D. Register agent + seed policies
+
+> Current backend validation requires `upstreamUrl` in create-agent payload.
+
+```bash
+curl -s -X POST http://localhost:3001/api/v1/admin/agents   -H "Authorization: Bearer $ADMIN_JWT"   -H "Content-Type: application/json"   -d '{
+    "name":"my-lobster-agent",
+    "upstreamUrl":"http://localhost:3001/api/v1/mcp/mcp",
+    "description":"Lobster Shell agent with policy enforcement"
+  }' | jq .
+```
+
+Save `agent.id` and `runtime_token` (`art_xxx`, shown once).
+
+```bash
+ADMIN_JWT="$ADMIN_JWT" AGENT_ID="<agent.id>" bash seed-openclaw-policies.sh
+```
+
+Save the printed `PROVIDER_ID`.
+
+### E. Install lobster-shell plugin via command (npm)
+
+```bash
+openclaw plugins install @simplaix/lobster-shell
+```
+
+If plugin directory already exists, remove/rename old directory first and reinstall.
+
+### F. Configure OpenClaw (`~/.openclaw/openclaw.json`)
+
+```jsonc
+{
+  "plugins": {
+    "entries": {
+      "lobster-shell": {
+        "enabled": true,
+        "config": {
+          "gatewayUrl": "http://localhost:3001",
+          "providerId": "<PROVIDER_ID>",
+          "timeoutMs": 310000,
+          "skipTools": []
+        }
+      }
+    }
+  },
+  "env": {
+    "vars": {
+      "SIMPLAIX_AGENT_RUNTIME_TOKEN": "<art_xxx>"
+    }
+  }
+}
+```
+
+`gatewayUrl` is required.
+
+### G. Start Cloudflare tunnel first, then restart gateway
+
+```bash
+./scripts/dev-tunnel.sh
+# writes GATEWAY_PUBLIC_URL=https://<subdomain>.trycloudflare.com to .env
+```
+
+Restart gateway server after tunnel URL is written so deep links use the public URL.
+
+### H. Provide user-facing management URL + mobile pairing guide
+
+- Gateway app URL for management: `http://localhost:3000`
+- Ask user to send `/pair` in WhatsApp/Telegram
+- User taps returned HTTPS pair link
+- Link opens Simplaix approval app via deep link
+- After pairing, high-risk tools trigger mobile approval notifications
