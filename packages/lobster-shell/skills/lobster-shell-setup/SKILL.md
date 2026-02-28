@@ -15,6 +15,7 @@ Execute setup in this order:
 8. Seed policies and capture `PROVIDER_ID`
 9. Configure `~/.openclaw/openclaw.json` with:
    - `plugins.entries.lobster-shell.config.gatewayUrl`
+   - `plugins.entries.lobster-shell.config.gatewayRoot`
    - `providerId`
    - `env.vars.SIMPLAIX_AGENT_RUNTIME_TOKEN`
 10. Install plugin: `openclaw plugins install @simplaix/lobster-shell`

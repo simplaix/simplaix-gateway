@@ -23,6 +23,9 @@
         "items": {
           "type": "string"
         }
+      },
+      "gatewayRoot": {
+        "type": "string"
       }
     },
     "required": [
@@ -46,6 +49,10 @@
     "skipTools": {
       "label": "Skip Tools",
       "help": "Tool names to skip policy evaluation"
+    },
+    "gatewayRoot": {
+      "label": "Gateway Root",
+      "help": "Local filesystem path of simplaix/agent-gateway repo (used by /lobster-shell start)"
     }
   },
   "skills": [
