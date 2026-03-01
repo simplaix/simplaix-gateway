@@ -1,0 +1,65 @@
+---
+title: Confirmations
+description: Endpoints for managing the human-in-the-loop confirmation workflow.
+---
+
+## Get Pending Confirmations
+
+Retrieve all pending confirmation requests (polling fallback for SSE).
+
+```bash
+GET /api/v1/stream/pending
+Authorization: Bearer <jwt>
+```
+
+**Response** `200 OK`
+
+```json
+[
+  {
+    "id": "cfm_...",
+    "userId": "usr_...",
+    "toolName": "transfer_money",
+    "arguments": { "amount": 1000, "to": "user456" },
+    "risk": "high",
+    "status": "pending",
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  }
+]
+```
+
+## Confirm Request
+
+```bash
+POST /api/v1/confirmation/:id/confirm
+Authorization: Bearer <jwt>
+```
+
+## Reject Request
+
+```bash
+POST /api/v1/confirmation/:id/reject
+Authorization: Bearer <jwt>
+```
+
+## Respond with Details
+
+```bash
+POST /api/v1/confirmation/:id/respond
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "confirmed": true,
+  "reason": "Looks good"
+}
+```
+
+## Confirmation States
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Awaiting human decision |
+| `confirmed` | Confirmed, request proceeds |
+| `rejected` | Rejected, request denied |
+| `expired` | Timed out without decision |

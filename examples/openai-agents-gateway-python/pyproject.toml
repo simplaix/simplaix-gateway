@@ -1,0 +1,18 @@
+[project]
+name = "openai-agents-gateway-python-example"
+version = "0.1.0"
+description = "Minimal OpenAI Agents SDK runtime connected to Simplaix Gateway MCP"
+requires-python = ">=3.10"
+dependencies = [
+    "openai-agents",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-dotenv>=1.0.0",
+    "simplaix-gateway",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+simplaix-gateway = { path = "../../packages/simplaix-gateway-py", editable = true }

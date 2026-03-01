@@ -1,0 +1,66 @@
+---
+title: Virtual Agent Identity
+description: How agents are registered, managed, and identified in the Gateway.
+---
+
+Each agent in the Gateway has a virtual identity that includes its upstream URL, required credentials, tenant association, and an active/disabled state. The agent invoke endpoint is protocol-agnostic -- the upstream can be an MCP server, a CopilotKit agent, a Strands/AG-UI agent, or any custom HTTP service.
+
+## Agent Registration
+
+Agents are registered by admin users and linked to a tenant. Each agent has:
+
+- **Name** -- human-readable identifier
+- **Upstream URL** -- where the agent runtime is hosted
+- **Required Credentials** -- credential types the agent needs (e.g., `gateway_api`, `slack`)
+- **Kill Switch** -- ability to disable an agent immediately
+
+```bash
+POST /api/v1/admin/agents
+{
+  "name": "Finance Bot",
+  "upstreamUrl": "https://finance-agent.internal/mcp",
+  "requiredCredentials": [{ "serviceType": "gateway_api" }],
+  "description": "Handles financial queries"
+}
+```
+
+## Agent Invocation Flow
+
+When the Gateway invokes an agent (via `/v1/agents/:id/invoke`), it performs a full pre-flight:
+
+1. **Authenticate** the user via JWT
+2. **Load agent** and check tenant isolation + kill switch
+3. **Resolve credentials** -- if `requiredCredentials` are configured and any are missing, return 401 with auth URLs
+4. **Inject headers** -- user identity + resolved credentials as `X-Credential-*`
+5. **Forward** to the agent's `upstreamUrl` and stream the response back
+
+## Injected Headers
+
+When forwarding requests to agent runtimes, the Gateway injects these headers:
+
+| Header | Description |
+|--------|-------------|
+| `X-User-Id` | User ID |
+| `X-End-User-ID` | End-user ID |
+| `X-End-User-Email` | User email address |
+| `X-End-User-Roles` | Comma-separated roles |
+| `X-Tenant-ID` | Tenant ID |
+| `X-Gateway-Agent-ID` | Agent UUID |
+| `X-Gateway-Request-ID` | Unique request ID |
+| `X-Credential-{service}` | Resolved credential value per service type |
+
+The agent runtime can use `X-Gateway-Agent-ID` to identify itself when calling back into the Gateway's tool proxy (as `X-Agent-Id`).
+
+## Kill Switch
+
+Admins can instantly disable or re-enable any agent:
+
+```bash
+# Disable agent
+POST /api/v1/admin/agents/:id/disable
+
+# Re-enable agent
+POST /api/v1/admin/agents/:id/enable
+```
+
+When an agent is disabled, all requests to it are immediately rejected.

@@ -1,0 +1,181 @@
+---
+title: MCP Access Control
+description: Provider-level ACL and tool-level policies that govern which agents and users can access MCP tools through the Gateway.
+---
+
+The Gateway enforces a **two-tier access control** model for every MCP tool call:
+
+1. **Provider-level ACL** -- can this subject (agent or user) access the provider at all?
+2. **Tool-level policy** -- which specific tools within that provider can they call, and under what conditions?
+
+## Subjects
+
+Access rules are scoped to a **subject** -- the entity making the request:
+
+| Subject type | Description | Default behavior |
+|--------------|-------------|------------------|
+| `user` | An individual end-user (by user ID) | **Deny** (whitelist model) |
+| `agent` | A registered agent (by agent ID) | **Deny** (whitelist model) |
+
+All subjects are denied access to all providers by default. An admin must explicitly grant access to each provider by creating `allow` rules. This whitelist model ensures no provider is accidentally exposed without deliberate configuration.
+
+## Provider-Level ACL
+
+Each rule grants or denies a subject access to a provider:
+
+```json
+{
+  "subjectType": "agent",
+  "subjectId": "agent-abc123",
+  "providerId": "slack-provider-id",
+  "action": "allow",
+  "toolPattern": "*"
+}
+```
+
+### Evaluation Order
+
+When multiple rules match, the Gateway evaluates in this order (first match wins):
+
+1. Explicit **user deny** → denied
+2. Explicit **user allow** → allowed
+3. Explicit **agent deny** → denied
+4. Explicit **agent allow** → allowed
+5. **Wildcard** (`*`) provider rules
+6. **Default** → deny for all subjects (whitelist model)
+
+## Tool-Level Policies
+
+Each access rule includes a `toolPattern` (glob syntax) and an `action` that controls what happens when a matching tool is called:
+
+| Action | Behavior |
+|--------|----------|
+| `allow` | Tool call goes through immediately |
+| `deny` | Tool call is rejected with `403` |
+| `require_confirmation` | Tool call is paused until a human confirms or rejects it (see [Confirmations](/docs/concepts/confirmations)) |
+
+### Glob Patterns
+
+Tool patterns use glob syntax to match tool names:
+
+| Pattern | Matches |
+|---------|---------|
+| `*` | All tools in the provider |
+| `slack_send_*` | `slack_send_message`, `slack_send_file`, etc. |
+| `github_read_*` | `github_read_repo`, `github_read_issue`, etc. |
+| `transfer_money` | Exactly `transfer_money` |
+
+### Risk Levels
+
+Each rule can optionally specify a `riskLevel` for categorization and audit:
+
+| Risk Level | Description |
+|------------|-------------|
+| `low` | Read-only operations |
+| `medium` | Write operations |
+| `high` | Financial or sensitive operations |
+| `critical` | Destructive operations |
+
+### Policy Specificity
+
+When multiple tool-level rules match the same tool call, the most specific rule wins. Specificity is scored by:
+
+1. **Tool specificity** -- exact name beats glob pattern beats wildcard (`*`)
+2. **Subject specificity** -- `user` beats `agent`
+3. **Action severity** -- `deny` beats `require_confirmation` beats `allow`
+
+## Configuration
+
+### Via the Dashboard
+
+1. Go to the **Agents** tab and click an agent card to open the **Agent Detail Panel**
+2. Each provider shows a toggle and a tool selector:
+   - Toggle a provider to **enabled** to grant access
+   - Select **all tools** or pick specific ones
+3. Click **Save Changes**
+
+Changes take effect immediately -- the tool aggregation cache refreshes within 60 seconds.
+
+### Via the API
+
+**List rules for an agent:**
+
+```bash
+GET /api/v1/admin/provider-access?subject_type=agent&subject_id={agentId}
+```
+
+**Bulk upsert rules for an agent:**
+
+```bash
+curl -X PUT http://localhost:3001/api/v1/admin/provider-access/agent/<agent-id> \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rules": [
+      { "providerId": "slack-id", "action": "allow", "toolPattern": "*" },
+      { "providerId": "github-id", "action": "allow", "toolPattern": "github_read_*" },
+      { "providerId": "stripe-id", "action": "require_confirmation", "toolPattern": "stripe_charge_*", "riskLevel": "high" }
+    ]
+  }'
+```
+
+**Create a single rule:**
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/provider-access \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subjectType": "agent",
+    "subjectId": "<agent-id>",
+    "providerId": "<provider-id>",
+    "action": "allow",
+    "toolPattern": "slack_read_*",
+    "riskLevel": "low"
+  }'
+```
+
+**Test policy evaluation (dry run):**
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/provider-access/evaluate \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "user-id",
+    "providerId": "slack-id",
+    "toolName": "slack_send_message",
+    "agentId": "agent-id"
+  }'
+# Response: { "action": "require_confirmation", "rule": { ... } }
+```
+
+## Examples
+
+### Read-only agent
+
+Allow an agent to list and read from all providers, but deny any write operations:
+
+```json
+[
+  { "providerId": "slack-id", "action": "allow", "toolPattern": "slack_list_*" },
+  { "providerId": "slack-id", "action": "allow", "toolPattern": "slack_get_*" },
+  { "providerId": "slack-id", "action": "deny", "toolPattern": "*" },
+  { "providerId": "github-id", "action": "allow", "toolPattern": "github_read_*" },
+  { "providerId": "github-id", "action": "deny", "toolPattern": "*" }
+]
+```
+
+Because more specific patterns win over wildcards, `slack_list_*` (allow) takes priority over `*` (deny).
+
+### Confirmation-gated agent
+
+Allow an agent full read access but require human confirmation for writes:
+
+```json
+[
+  { "providerId": "slack-id", "action": "allow", "toolPattern": "slack_list_*" },
+  { "providerId": "slack-id", "action": "require_confirmation", "toolPattern": "slack_send_*", "riskLevel": "medium" },
+  { "providerId": "stripe-id", "action": "require_confirmation", "toolPattern": "*", "riskLevel": "high" }
+]
+```

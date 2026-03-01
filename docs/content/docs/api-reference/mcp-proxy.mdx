@@ -1,0 +1,94 @@
+---
+title: MCP Proxy
+description: Proxy endpoints for routing MCP tool calls to upstream servers with policy enforcement.
+---
+
+In addition to the protocol-agnostic [agent invoke endpoint](/docs/api-reference/agents#invoke-agent), the Gateway provides a dedicated MCP proxy for JSON-RPC tool calls. This proxy routes tool calls from agent runtimes to upstream MCP servers with policy enforcement, confirmation workflows, and credential injection. All proxy endpoints use API key authentication.
+
+## Request Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Agent Runtime
+    participant GW as Gateway
+    participant Auth as Auth Middleware
+    participant PE as Policy Engine
+    participant RP as Request Pauser
+    participant Audit as Audit Service
+    participant MCP as Upstream MCP
+
+    C->>GW: POST /v1/mcp/tools/call<br/>X-Api-Key: gk_xxx + X-Agent-Id
+    GW->>Auth: Authenticate (API key + agent)
+    Auth-->>GW: User + Agent context
+
+    GW->>PE: Evaluate policy for tool
+    PE-->>GW: allow / deny / require_confirmation
+
+    alt Policy: deny
+        GW-->>C: 403 Forbidden
+    else Policy: require_confirmation
+        GW->>RP: Pause request
+        Note over RP: Waiting for confirmation...
+        RP-->>GW: Approved
+    end
+
+    GW->>GW: Resolve credentials
+    GW->>Audit: Create log (pending)
+    GW->>MCP: Forward + identity + credential headers
+    MCP-->>GW: Response
+    GW->>Audit: Update log (completed)
+    GW-->>C: Response
+```
+
+## Call a Tool
+
+```bash
+POST /api/v1/mcp/tools/call
+X-Api-Key: gk_xxx
+X-Agent-Id: <agent-id>
+X-User-Id: <user-id>
+Content-Type: application/json
+
+{
+  "name": "get_balance",
+  "arguments": { "account_id": "user123" }
+}
+```
+
+The Gateway will:
+1. Authenticate the API key and resolve the agent
+2. Evaluate the policy engine for the tool name
+3. Resolve and inject credentials
+4. Forward the request to the agent's upstream server
+5. Return the upstream response
+
+## List Tools
+
+```bash
+GET /api/v1/mcp/tools/list
+X-Api-Key: gk_xxx
+X-Agent-Id: <agent-id>
+```
+
+## Read a Resource
+
+```bash
+POST /api/v1/mcp/resources/read
+X-Api-Key: gk_xxx
+X-Agent-Id: <agent-id>
+X-User-Id: <user-id>
+Content-Type: application/json
+
+{
+  "uri": "resource://example"
+}
+```
+
+## List Resources
+
+```bash
+GET /api/v1/mcp/resources/list
+X-Api-Key: gk_xxx
+X-Agent-Id: <agent-id>
+```

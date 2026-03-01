@@ -1,0 +1,44 @@
+---
+title: Introduction
+description: Enterprise-grade Agent Gateway providing identity, security, credential management, and policy enforcement for AI agents.
+---
+
+Simplaix Gateway is an enterprise-grade Agent Gateway that provides identity, security, credential management, and policy enforcement for AI agents. It supports multiple agent protocols including [MCP](https://modelcontextprotocol.io/), CopilotKit, AG-UI/Strands, and any HTTP-based agent runtime.
+
+## Key Features
+
+- **Multi-Protocol Agent Routing** -- Route requests to any HTTP-based agent runtime (MCP servers, CopilotKit agents, Strands/AG-UI agents, custom runtimes)
+- **Virtual Agent Identity** -- Register agents with upstream URLs, kill switch, and tenant isolation
+- **Dual Authentication** -- JWT for admins and end-users, API Keys (`gk_`) for server-to-server
+- **Credential Vault** -- Encrypted per-user credential storage with automatic resolution and injection
+- **Policy Engine** -- Configurable rules: allow, deny, or require human confirmation per tool
+- **Human-in-the-Loop Confirmation** -- SSE-based real-time confirmation workflow for sensitive operations
+- **Comprehensive Audit Trail** -- Track every tool call with full context and timing
+- **Multi-Tenancy** -- Tenant isolation across agents, credentials, and users
+- **Credential SDKs** -- Python and TypeScript SDKs for agents to resolve user credentials
+
+## Supported Agent Protocols
+
+| Protocol | Integration Point | Description |
+|----------|------------------|-------------|
+| **MCP** | `/api/v1/mcp/*` | JSON-RPC tool calls to MCP servers with policy enforcement |
+| **HTTP Agent** | `/api/v1/agents/:id/invoke` | Any HTTP-based agent runtime (JSON or SSE streaming) |
+| **CopilotKit** | Via agent invoke | CopilotKit agents with AG-UI SSE streaming |
+| **Strands / AG-UI** | Via agent invoke | Strands framework agents with AG-UI protocol |
+
+## Guides by Role
+
+<Cards>
+  <Card title="Agent Creator Guide" href="/docs/guides/agent-creator" description="Build AI agents that connect to the Gateway for identity, credentials, and tool routing." />
+  <Card title="App Builder Guide" href="/docs/guides/app-builder" description="Build apps that invoke agents, handle credentials, and render streaming responses." />
+  <Card title="Gateway Admin Guide" href="/docs/guides/gateway-admin" description="Deploy, configure, and operate a Gateway instance with users, policies, and monitoring." />
+</Cards>
+
+## Quick Links
+
+<Cards>
+  <Card title="Getting Started" href="/docs/getting-started" />
+  <Card title="Architecture" href="/docs/concepts/architecture" />
+  <Card title="Authentication" href="/docs/authentication" />
+  <Card title="API Reference" href="/docs/api-reference/auth" />
+</Cards>

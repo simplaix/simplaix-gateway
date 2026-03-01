@@ -1,0 +1,39 @@
+---
+title: Overview
+description: Dual authentication model supporting JWT and API key authentication.
+---
+
+The Gateway supports two authentication methods, each designed for different use cases.
+
+## Authentication Methods
+
+| Method | Format | Use Case |
+|--------|--------|----------|
+| **JWT** | `Authorization: Bearer <jwt>` | Admin operations, agent invocation from frontend |
+| **API Key** | `X-Api-Key: gk_xxx` + `X-User-Id` | Agent runtime to Gateway (tool proxy, credential resolution) |
+
+## When to Use Each
+
+### JWT Authentication
+
+Use JWT for **human-initiated operations**:
+
+- Logging into the dashboard
+- Managing agents, credential providers, and API keys
+- Invoking agents from the frontend
+- Viewing audit logs and confirmations
+
+### API Key Authentication
+
+Use API Keys for **machine-to-machine communication**:
+
+- Agent runtimes calling the tool proxy
+- Credential resolution from agent code
+- Automated server-to-server integrations
+
+## Learn More
+
+<Cards>
+  <Card title="JWT Authentication" href="/docs/authentication/jwt" />
+  <Card title="API Key Authentication" href="/docs/authentication/api-keys" />
+</Cards>
