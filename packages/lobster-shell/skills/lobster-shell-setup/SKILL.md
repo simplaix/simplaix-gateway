@@ -5,7 +5,7 @@ description: End-to-end setup for Simplaix Gateway + @simplaix/lobster-shell in 
 
 Execute setup in this order:
 
-1. Clone `https://github.com/simplaix/agent-gateway`
+1. Clone `https://github.com/simplaix/simplaix-gateway`
 2. Start PostgreSQL
 3. Configure `.env`
 4. Install deps and migrate DB
