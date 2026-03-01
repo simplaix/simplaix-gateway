@@ -30,8 +30,8 @@
 ## 1) Clone source
 
 ```bash
-git clone https://github.com/simplaix/agent-gateway.git
-cd agent-gateway
+git clone https://github.com/simplaix/simplaix-gateway.git
+cd simplaix-gateway
 ```
 
 ---
