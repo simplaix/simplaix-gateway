@@ -1,6 +1,6 @@
 # lobster-shell
 
-OpenClaw plugin (`@simplaix/lobster-shell`) for [Simplaix Gateway](../../README.md) — **tool policy evaluation**, **audit logging**, and **mobile approval pairing**.
+OpenClaw plugin (`@simplaix/lobster-shell`) for [Simplaix Gateway](https://github.com/simplaix/simplaix-gateway) — **tool policy evaluation**, **audit logging**, and **mobile approval pairing**.
 
 Every tool call made by an OpenClaw agent is intercepted:
 
