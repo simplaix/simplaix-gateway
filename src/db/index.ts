@@ -1,54 +1,86 @@
 /**
- * Database connection management (PostgreSQL via Drizzle ORM)
+ * Database connection management (PostgreSQL or SQLite via Drizzle ORM)
+ * Mode is selected automatically from the DATABASE_URL prefix:
+ *   postgres://... → PostgreSQL (default)
+ *   file:./...    → SQLite (zero-dependency local mode)
  */
 
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
 import { nanoid } from 'nanoid';
 import { eq } from 'drizzle-orm';
 import { getConfig } from '../config.js';
 import * as schema from './schema.js';
-import { credentialProviders } from './schema.js';
+import * as sqliteSchema from './schema.sqlite.js';
+import { createPostgresDatabase, closePostgresDatabase } from './adapters/postgres.js';
+import { createSQLiteDatabase, closeSQLiteDatabase } from './adapters/sqlite.js';
 
 export type Database = ReturnType<typeof drizzle<typeof schema>>;
 
+type DbMode = 'postgres' | 'sqlite';
+
 let dbInstance: Database | null = null;
-let pgClient: ReturnType<typeof postgres> | null = null;
+let activeMode: DbMode | null = null;
+
+function detectMode(url: string): DbMode {
+  if (url.startsWith('file:') || url.endsWith('.db') || url.endsWith('.sqlite')) {
+    return 'sqlite';
+  }
+  return 'postgres';
+}
 
 /**
- * Initialize and return database connection
+ * Initialize and return database connection.
+ * Lazily creates the connection on first call.
  */
 export function getDatabase(): Database {
   if (dbInstance) {
     return dbInstance;
   }
 
-  const config = getConfig();
-  const { database } = config;
+  const { database } = getConfig();
 
   if (!database.postgresUrl) {
-    throw new Error('[DB] DATABASE_URL is required. PostgreSQL is the only supported database.');
+    throw new Error(
+      '[DB] DATABASE_URL is required. Use postgres://... or file:./gateway.db',
+    );
   }
 
-  pgClient = postgres(database.postgresUrl);
-  dbInstance = drizzle(pgClient, { schema });
-  console.log('[DB] Connected to PostgreSQL');
+  activeMode = detectMode(database.postgresUrl);
+
+  if (activeMode === 'sqlite') {
+    dbInstance = createSQLiteDatabase(database.postgresUrl);
+  } else {
+    dbInstance = createPostgresDatabase(database.postgresUrl);
+  }
 
   return dbInstance;
 }
 
 /**
- * Initialize database (run drizzle-kit migrations externally).
- * Seeds built-in data on first startup.
+ * Initialize database and seed built-in data on first startup.
+ *
+ * Uses the schema that matches the active db mode so that column types
+ * (e.g. timestamp_ms for SQLite) are serialized correctly.
  */
 export async function initializeDatabase() {
   const db = getDatabase();
 
-  // Seed the built-in "gateway_api" credential provider if it doesn't exist
-  const existing = await db
-    .select({ id: credentialProviders.id })
-    .from(credentialProviders)
-    .where(eq(credentialProviders.serviceType, 'gateway_api'))
+  // Select the table object whose column definitions match the active driver.
+  // SQLite timestamp columns use integer(timestamp_ms) — passing a Date through
+  // the PG column's mapToDriverValue would produce a raw Date that better-sqlite3
+  // cannot bind. Using the SQLite schema object avoids that coercion mismatch.
+  const cpTable =
+    activeMode === 'sqlite' ? sqliteSchema.credentialProviders : schema.credentialProviders;
+
+  // Cast to any so the PG-typed db accepts SQLite table objects (and vice versa).
+  // Column names and JS types are identical at runtime; only the driver-level
+  // serialization differs, which is why we pick the right table object above.
+  const anyDb = db as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+  const existing = await anyDb
+    .select({ id: cpTable.id })
+    .from(cpTable)
+    .where(eq(cpTable.serviceType, 'gateway_api'))
     .limit(1);
 
   if (existing.length === 0) {
@@ -59,7 +91,7 @@ export async function initializeDatabase() {
       jwt: { headerName: 'Authorization', prefix: 'Bearer ' },
     });
 
-    await db.insert(credentialProviders).values({
+    await anyDb.insert(cpTable).values({
       id,
       tenantId: null,
       serviceType: 'gateway_api',
@@ -81,9 +113,11 @@ export async function initializeDatabase() {
  * Close database connection
  */
 export async function closeDatabase() {
-  if (pgClient) {
-    await pgClient.end();
+  if (activeMode === 'sqlite') {
+    closeSQLiteDatabase();
+  } else {
+    await closePostgresDatabase();
   }
   dbInstance = null;
-  pgClient = null;
+  activeMode = null;
 }

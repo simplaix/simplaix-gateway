@@ -11,7 +11,10 @@
     "typecheck:gateway": "tsc -p tsconfig.gateway.json --noEmit",
     "test:gateway": "tsx --test test/**/*.test.ts",
     "db:generate": "drizzle-kit generate",
+    "db:generate:pg": "drizzle-kit generate",
+    "db:generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:pg": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
@@ -19,6 +22,7 @@
     "@hono/node-server": "^1.19.9",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.6.2",
     "cloudflared": "^0.7.1",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.11.7",
@@ -29,6 +33,7 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.11.17",
     "dotenv": "^17.3.1",
     "drizzle-kit": "^0.31.8",
