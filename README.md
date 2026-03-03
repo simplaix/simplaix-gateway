@@ -63,7 +63,7 @@ flowchart TB
         subgraph data [Data Layer]
             AuditSvc[Audit Service]
             Encryption[AES-256-GCM Encryption]
-            DB[(PostgreSQL)]
+            DB[(SQLite / PostgreSQL)]
         end
 
         subgraph realtime [Real-time]
@@ -111,13 +111,111 @@ flowchart TB
     SSE --> FE
 ```
 
-## Quick Start
+## Quick Start (Local Mode)
+
+Run the gateway locally with **no Docker or PostgreSQL required** — it uses SQLite by default.
+
+### Prerequisites
+
+- Node.js 20+
+
+### 1. Install
+
+```bash
+npm install -g simplaix-gateway
+```
+
+### 2. Initialise a workspace
+
+```bash
+mkdir my-gateway && cd my-gateway
+gateway init
+```
+
+`gateway init` creates a `.env` file with auto-generated secrets:
+
+```bash
+DATABASE_URL=file:./gateway.db
+PORT=3001
+JWT_SECRET=<generated>
+CREDENTIAL_ENCRYPTION_KEY=<generated>
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=<generated>
+```
+
+### 3. Start
+
+```bash
+gateway start
+```
+
+The gateway starts on `http://localhost:7521`. SQLite migrations are applied automatically.
+
+```bash
+# Verify
+curl http://localhost:7521/api/health
+```
+
+### 4. Create an admin user
+
+```bash
+gateway admin create --email admin@example.com --password secret
+gateway admin list
+```
+
+### 5. Optional: expose via public tunnel
+
+```bash
+gateway start --tunnel
+# [Tunnel] Public URL: https://xxxx.trycloudflare.com
+```
+
+### 6. Optional: start the dashboard + agent
+
+Run from the repo root (requires the `gateway-app/` directory):
+
+```bash
+gateway start --dashboard
+# or all-in-one:
+gateway start --tunnel --dashboard
+```
+
+This starts:
+- **Gateway** (Hono) on port 3001
+- **Cloudflared quick tunnel** → prints a public `https://` URL, sets it as `GATEWAY_PUBLIC_URL`
+- **Dashboard** (`gateway-app/`) on port 3000 via Next.js
+- **Python agent** (`gateway-app/agent/`) on port 8000 via `uv`
+
+### CLI Reference
+
+```bash
+gateway --version
+gateway --help
+
+gateway init [--force]                       # scaffold .env
+gateway start [--port <n>] [--db <url>]      # start server
+            [--tunnel]                       # + cloudflared public tunnel
+            [--dashboard]                    # + Next.js dashboard + Python agent
+            [--dashboard-path <dir>]         # custom path to gateway-app/
+gateway status                               # check DB + config
+gateway admin create --email <> --password <> [--name <>]
+gateway admin list
+```
+
+---
+
+## Development Setup
+
+For contributors who work directly in the repo. Supports two modes:
+
+- **Source mode** — run the CLI with `tsx` directly from `src/`, no build step needed
+- **Package mode** — build to `dist/` and test as the real npm package via `npm link`
 
 ### Prerequisites
 
 - Node.js 20+
 - pnpm
-- PostgreSQL 17+ (or Docker)
+- PostgreSQL 17+ (only if using Postgres; SQLite works out of the box)
 - Python 3.12+ (for the agent)
 
 ### 1. Clone and install
@@ -132,56 +230,86 @@ pnpm install
 
 ```bash
 cp .env.example .env
-# Edit .env — at minimum, set a JWT_SECRET and ADMIN_PASSWORD
+# Edit .env — set JWT_SECRET, DATABASE_URL (leave as file:./gateway.db for SQLite), ADMIN_PASSWORD
 ```
 
-### 3. Start PostgreSQL
+### 3. Run in source mode (recommended for development)
+
+Use `pnpm dev:cli` to run any CLI command directly from TypeScript source via `tsx` — no build step:
 
 ```bash
+pnpm dev:cli -- start                        # start gateway (SQLite)
+pnpm dev:cli -- start --tunnel               # + cloudflared tunnel
+pnpm dev:cli -- start --tunnel --dashboard   # + dashboard + agent
+pnpm dev:cli -- init
+pnpm dev:cli -- status
+pnpm dev:cli -- admin create --email admin@example.com --password secret
+pnpm dev:cli -- admin list
+```
+
+> The `--` separates pnpm flags from CLI arguments.
+
+### 4. Test as npm package (package mode)
+
+Build the CLI and link it globally to verify the published package behaviour:
+
+```bash
+pnpm build:cli     # compiles src/ → dist/
+npm link           # registers the `gateway` binary from dist/
+```
+
+Then use it exactly as end-users would:
+
+```bash
+gateway start --tunnel --dashboard
+gateway admin list
+gateway --version
+```
+
+To unlink when done:
+
+```bash
+npm unlink -g simplaix-gateway
+```
+
+### 5. Use PostgreSQL instead of SQLite
+
+```bash
+# In .env:
+DATABASE_URL=postgres://user:password@localhost:5432/gateway
+
+# Start Postgres
 docker compose up -d postgres
-```
 
-### 4. Apply migrations and start
-
-```bash
+# Apply migrations
 pnpm db:migrate
-pnpm dev
+
+# Start
+pnpm dev:cli -- start
 ```
 
-The Gateway will be running at `http://localhost:3001`. Verify with:
+### 6. Start the dashboard standalone (optional)
 
 ```bash
-curl http://localhost:3001/api/health
-```
-
-### 5. Start the dashboard (optional)
-
-```bash
-# In a new terminal
-pnpm --filter simplaix-gateway-app dev:ui
-```
-
-### 6. Start the Python agent (optional)
-
-```bash
-# In a new terminal
-cd gateway-app/agent && uv sync && uv run main.py
+cd gateway-app
+pnpm dev   # starts Next.js UI + Python agent via concurrently
 ```
 
 ## Project Structure
 
 ```
 simplaix-gateway/
-  src/                          # Gateway API (Hono on Vercel)
+  src/                          # Gateway API (Hono)
+    cli/                        # CLI entry + commands
     routes/                     # Route modules
     services/                   # Domain services
     middleware/                  # Auth, policy, audit middleware
     db/                         # Drizzle schema + migrations
   gateway-app/                  # Next.js dashboard + Python agent
+  drizzle/                      # Migration files (pg + sqlite)
   docs/                         # Documentation site (Fumadocs)
   packages/
-    simplaix-gateway-py/        # Python credential SDK
-    lobster-shell/              # Shell integration package
+    credential-sdk-python/      # Python credential SDK
 ```
 
 ## Documentation
