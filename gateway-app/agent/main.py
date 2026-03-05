@@ -179,7 +179,7 @@ Always confirm destructive actions (delete) before executing.
 # MCP client — connects to the gateway via the unified MCP endpoint.
 # The agent authenticates with its runtime token (AGENT_RUNTIME_TOKEN env var)
 # and receives all tools it is authorized to access, aggregated from all providers.
-gateway_mcp = MCPClient(GatewayMCPTransport())
+gateway_mcp = MCPClient(GatewayMCPTransport(gateway_url="http://localhost:7521"))
 
 # Create Strands agent with MCP tools (gracefully handle MCP connection failure)
 # Frontend tools (navigate_to_tab, select_agent, refresh_dashboard, check_gateway_health)

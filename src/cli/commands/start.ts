@@ -124,6 +124,7 @@ function startDashboard(dashboardDir: string, gatewayUrl: string, port: number, 
   const uiEnv: NodeJS.ProcessEnv = {
     ...envWithoutPort,
     NEXT_PUBLIC_GATEWAY_URL: gatewayUrl,
+    GATEWAY_API_URL: `http://localhost:${port}`,
   };
 
   // Next.js UI — use the locally installed next binary to avoid needing a

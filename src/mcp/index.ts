@@ -13,6 +13,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPTransport } from '@hono/mcp';
 
 import type { GatewayVariables } from '../types/index.js';
+import { computeInternalToken } from './internal-token.js';
 import { registerAgentTools } from './tools/agents.js';
 import { registerToolProviderTools } from './tools/tool-providers.js';
 import { registerConfirmationTools } from './tools/confirmations.js';
@@ -50,6 +51,18 @@ const mcpServerRoutes = new Hono<{ Variables: GatewayVariables }>();
 
 const mcpServer = createMcpServer();
 const transport = new StreamableHTTPTransport();
+
+mcpServerRoutes.use('/mcp', async (c, next) => {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) return c.json({ error: 'Server misconfigured' }, 500);
+
+  const authHeader = c.req.header('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token || token !== computeInternalToken(jwtSecret)) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+  await next();
+});
 
 mcpServerRoutes.all('/mcp', async (c) => {
   if (!mcpServer.isConnected()) {

@@ -40,3 +40,5 @@ data/
 # drizzle
 drizzle/
 .cursor/plans/
+.env.*
+!.env.example

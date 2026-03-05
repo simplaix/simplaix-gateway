@@ -151,16 +151,15 @@ gateway start
 
 The gateway starts on `http://localhost:7521`. SQLite migrations are applied automatically.
 
-```bash
-# Verify
-curl http://localhost:7521/api/health
-```
-
 ### 4. Create an admin user
 
 ```bash
 gateway admin create --email admin@example.com --password secret
-gateway admin list
+```
+
+```bash
+# Verify
+curl http://localhost:7521/api/health
 ```
 
 ### 5. Optional: expose via public tunnel

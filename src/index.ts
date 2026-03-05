@@ -41,6 +41,7 @@ import { toolGateRoutes } from './routes/tool-gate/index.js';
 // Import services for initialization
 import { userService } from './services/user.service/index.js';
 import { notificationDispatcher } from './services/notification.service/index.js';
+import { seedGatewaySelfProvider } from './services/tool-provider.service/index.js';
 import { getConfig } from './config.js';
 
 // Initialize database and admin user on cold start
@@ -55,7 +56,10 @@ async function ensureDbInitialized() {
     if (config.adminEmail && config.adminPassword) {
       await userService.ensureInitialAdmin(config.adminEmail, config.adminPassword);
     }
-    
+
+    // Seed built-in gateway management provider
+    await seedGatewaySelfProvider();
+
     // Start push notification dispatcher
     notificationDispatcher.init();
 

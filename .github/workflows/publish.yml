@@ -1,0 +1,60 @@
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options: [patch, minor, major]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    name: Bump, Build & Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Use a token so the pushed commit/tag triggers other workflows
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck:gateway
+
+      - name: Bump version, commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          pnpm version ${{ inputs.bump }}
+          echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+          git push --follow-tags
+
+      - run: pnpm build:cli
+
+      - name: Publish to npm
+        run: pnpm publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          generate_release_notes: true

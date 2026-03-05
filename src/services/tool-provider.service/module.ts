@@ -7,6 +7,7 @@ import { nanoid } from 'nanoid';
 import { eq, desc } from 'drizzle-orm';
 import { getDatabase } from '../../db/index.js';
 import { toolProviders } from '../../db/schema.js';
+import { computeInternalToken } from '../../mcp/internal-token.js';
 import { TTLCache } from '../../utils/cache.js';
 import { matchGlobPattern } from '../../utils/glob.js';
 import type { ToolProvider } from '../../types/index.js';
@@ -259,3 +260,36 @@ class ToolProviderService {
 
 // Export singleton instance
 export const toolProviderService = new ToolProviderService();
+
+export const GATEWAY_SELF_PROVIDER_ID = '__gateway_management__';
+
+export async function seedGatewaySelfProvider(): Promise<void> {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) return;
+
+  const port = process.env.PORT ?? '7521';
+  const internalToken = computeInternalToken(jwtSecret);
+  const db = getDatabase();
+
+  await db.insert(toolProviders)
+    .values({
+      id: GATEWAY_SELF_PROVIDER_ID,
+      name: 'Gateway Management',
+      pattern: '*',
+      endpoint: `http://localhost:${port}/api/v1/mcp-server/mcp`,
+      authType: 'bearer',
+      authSecret: internalToken,
+      priority: 0,
+      isActive: true,
+      description: 'Built-in gateway management tools (agents, confirmations, audit, policies)',
+      createdAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: toolProviders.id,
+      set: {
+        endpoint: `http://localhost:${port}/api/v1/mcp-server/mcp`,
+        authSecret: internalToken,
+        updatedAt: new Date(),
+      },
+    });
+}
