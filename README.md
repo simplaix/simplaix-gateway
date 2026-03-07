@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/public/simplaix-gateway-logo.png" alt="Simplaix Gateway" width="64" />
+</p>
+
 # Agent Gateway by Simplaix
 
 An open-source Agent Gateway that gives your AI agents a secure foundation — identity, credentials, policy enforcement, and observability — so you can deploy agents to production with confidence.
