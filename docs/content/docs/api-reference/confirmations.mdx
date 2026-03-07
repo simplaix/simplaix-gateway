@@ -1,48 +1,29 @@
 ---
 title: Confirmations
-description: Endpoints for managing the human-in-the-loop confirmation workflow.
+description: Human-in-the-loop confirmation listing and decision endpoints.
 ---
 
-## Get Pending Confirmations
+## Endpoint Map
 
-Retrieve all pending confirmation requests (polling fallback for SSE).
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/confirmation/list` | Flexible auth | List DB confirmations (`status` filter supported) |
+| `GET` | `/api/v1/confirmation/pending` | Flexible auth | List in-memory pending confirmations |
+| `GET` | `/api/v1/confirmation/:id` | Flexible auth | Get one confirmation by request ID |
+| `POST` | `/api/v1/confirmation/:id/respond` | Flexible auth | Confirm/reject with optional reason |
+| `POST` | `/api/v1/confirmation/:id/confirm` | Flexible auth | Confirm shortcut |
+| `POST` | `/api/v1/confirmation/:id/reject` | Flexible auth | Reject shortcut |
+
+## List Confirmations
 
 ```bash
-GET /api/v1/stream/pending
+GET /api/v1/confirmation/list?status=pending
 Authorization: Bearer <jwt>
 ```
 
-**Response** `200 OK`
+`status` supports: `pending`, `confirmed`, `rejected`, `expired`, `consumed`.
 
-```json
-[
-  {
-    "id": "cfm_...",
-    "userId": "usr_...",
-    "toolName": "transfer_money",
-    "arguments": { "amount": 1000, "to": "user456" },
-    "risk": "high",
-    "status": "pending",
-    "createdAt": "2025-01-01T00:00:00.000Z"
-  }
-]
-```
-
-## Confirm Request
-
-```bash
-POST /api/v1/confirmation/:id/confirm
-Authorization: Bearer <jwt>
-```
-
-## Reject Request
-
-```bash
-POST /api/v1/confirmation/:id/reject
-Authorization: Bearer <jwt>
-```
-
-## Respond with Details
+## Respond
 
 ```bash
 POST /api/v1/confirmation/:id/respond
@@ -55,11 +36,16 @@ Content-Type: application/json
 }
 ```
 
-## Confirmation States
+If confirmed, response may include short-lived `confirmation_token` and `expiresIn` seconds.
 
-| Status | Description |
-|--------|-------------|
-| `pending` | Awaiting human decision |
-| `confirmed` | Confirmed, request proceeds |
-| `rejected` | Rejected, request denied |
-| `expired` | Timed out without decision |
+## Shortcuts
+
+```bash
+POST /api/v1/confirmation/:id/confirm
+POST /api/v1/confirmation/:id/reject
+```
+
+## Notes
+
+- Access is restricted to the initiating user/end-user, or tenant admin with admin role.
+- Timeout is recorded as a rejection with reason `Request timed out`.

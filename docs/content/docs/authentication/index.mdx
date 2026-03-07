@@ -1,22 +1,23 @@
 ---
-title: Overview
-description: Dual authentication model supporting JWT and API key authentication.
+title: Authentication Overview
+description: JWT, API key, and runtime-token authentication modes in the gateway.
 ---
 
-The Gateway supports two authentication methods, each designed for different use cases.
+The gateway supports three authentication modes, each optimized for a different caller type.
 
 ## Authentication Methods
 
 | Method | Format | Use Case |
 |--------|--------|----------|
-| **JWT** | `Authorization: Bearer <jwt>` | Admin operations, agent invocation from frontend |
-| **API Key** | `X-Api-Key: gk_xxx` + `X-User-Id` | Agent runtime to Gateway (tool proxy, credential resolution) |
+| **JWT** | `Authorization: Bearer <jwt>` | Human-facing app flows and admin operations |
+| **API Key** | `X-Api-Key: gk_xxx` (+ JWT or `X-User-Id`) | Server-to-server trust for runtimes and integrations |
+| **Runtime Token** | `Authorization: Bearer art_...` (or `X-Api-Key: art_...`) | First-party registered agent runtime identity |
 
 ## When to Use Each
 
 ### JWT Authentication
 
-Use JWT for **human-initiated operations**:
+Use JWT for human-initiated operations:
 
 - Logging into the dashboard
 - Managing agents, credential providers, and API keys
@@ -25,15 +26,22 @@ Use JWT for **human-initiated operations**:
 
 ### API Key Authentication
 
-Use API Keys for **machine-to-machine communication**:
+Use API keys for machine-to-machine communication:
 
-- Agent runtimes calling the tool proxy
-- Credential resolution from agent code
-- Automated server-to-server integrations
+- Calling MCP endpoints from trusted backend services
+- Credential resolve/check flows
+- Service integrations that need scoped gateway access
 
-## Learn More
+### Runtime Token Authentication (`art_`)
 
-<Cards>
-  <Card title="JWT Authentication" href="/docs/authentication/jwt" />
-  <Card title="API Key Authentication" href="/docs/authentication/api-keys" />
-</Cards>
+Use runtime tokens for registered first-party agents:
+
+- Issued once at agent creation (and on token rotation)
+- Validates agent identity directly
+- Works with `X-Gateway-Session-Token` to preserve end-user context in callback flows
+
+## Reference Links
+
+- Auth and pairing APIs: [/docs/api-reference/auth](/docs/api-reference/auth)
+- API key management APIs: [/docs/api-reference/api-keys](/docs/api-reference/api-keys)
+- MCP endpoints auth behavior: [/docs/api-reference/mcp-proxy](/docs/api-reference/mcp-proxy)

@@ -3,17 +3,24 @@ title: Policy Engine
 description: Configurable rules for controlling tool access with allow, deny, and confirmation actions.
 ---
 
-The policy engine evaluates rules to determine whether a tool call should be allowed, denied, or require human confirmation.
+The policy engine determines whether a tool call should be allowed, denied, or require human confirmation.
+
+In current gateway flow:
+
+- **Primary policy source**: provider access rules in `provider_access_rules` (see [MCP Access Control](/docs/concepts/mcp-access-control))
+- **Fallback policy source**: static config rules in `src/config.ts` (used when DB rules are unavailable for a direct policy evaluation path)
 
 ## Configuration
 
-Policies are configured in `src/config.ts`:
+Default fallback policies are configured in `src/config.ts`:
 
 ```typescript
 const policies = [
   { tool: 'transfer_money', action: 'require_confirmation', risk: 'high' },
   { tool: 'delete_*',       action: 'require_confirmation', risk: 'critical' },
+  { tool: 'write_*',        action: 'require_confirmation', risk: 'medium' },
   { tool: 'read_*',         action: 'allow',               risk: 'low' },
+  { tool: '*',              action: 'allow',               risk: 'low' },
 ];
 ```
 
@@ -41,12 +48,14 @@ Tool names support wildcard matching with `*`.
 When an MCP tool call arrives at the Gateway:
 
 1. The **auth middleware** authenticates the request (JWT or API key)
-2. The **policy engine** matches the tool name against configured rules
-3. Based on the matched policy action:
+2. The **provider access service** checks provider ACL (default deny / whitelist model)
+3. The **tool policy evaluator** selects the best matching DB rule for `toolPattern` (exact > glob > wildcard, user > agent, deny > require_confirmation > allow)
+4. If there are zero DB rules for that subject/provider evaluation, the **config fallback policy** from `src/config.ts` is used
+5. Based on the final action:
    - `allow`: The request is forwarded to the upstream server
    - `deny`: A 403 response is returned immediately
    - `require_confirmation`: The request is paused and a confirmation notification is sent via SSE
-4. After confirmation (or rejection), the request is either forwarded or denied
-5. The **audit service** logs the result
+6. After confirmation (or rejection), the request is either forwarded or denied
+7. The **audit service** logs the result
 
 See [Confirmations](/docs/concepts/confirmations) for details on the human-in-the-loop confirmation flow.

@@ -1,40 +1,22 @@
 ---
-title: Auth
-description: User registration, login, and authentication endpoints.
+title: Auth & Pairing
+description: Authentication, profile, and mobile-device pairing endpoints.
 ---
 
-## Register
+## Endpoint Map
 
-Create a new user account.
-
-```bash
-POST /api/v1/auth/register
-Content-Type: application/json
-
-{
-  "email": "admin@example.com",
-  "password": "securepassword",
-  "name": "Admin"
-}
-```
-
-**Response** `201 Created`
-
-```json
-{
-  "token": "eyJ...",
-  "user": {
-    "id": "usr_...",
-    "email": "admin@example.com",
-    "name": "Admin",
-    "tenantId": "tnt_..."
-  }
-}
-```
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/auth/login` | None | Verify email/password and issue login JWT |
+| `POST` | `/api/v1/auth/verify-credentials` | None | Verify email/password without issuing JWT |
+| `GET` | `/api/v1/auth/me` | JWT | Get current user profile |
+| `PUT` | `/api/v1/auth/me` | JWT | Update current user profile |
+| `POST` | `/api/v1/auth/change-password` | JWT | Change current user password |
+| `POST` | `/api/v1/auth/pairing-code` | Flexible auth | Create short-lived pairing token + deep link |
+| `GET` | `/api/v1/auth/pair-link/:code` | None | Render HTML redirect page for app pairing |
+| `POST` | `/api/v1/auth/pair` | Pairing token | Exchange pairing token for long-lived device JWT |
 
 ## Login
-
-Authenticate and receive a JWT.
 
 ```bash
 POST /api/v1/auth/login
@@ -42,40 +24,92 @@ Content-Type: application/json
 
 {
   "email": "admin@example.com",
-  "password": "securepassword"
+  "password": "secret"
 }
 ```
 
-**Response** `200 OK`
-
 ```json
 {
-  "token": "eyJ...",
+  "success": true,
+  "token": "<jwt>",
   "user": {
     "id": "usr_...",
     "email": "admin@example.com",
     "name": "Admin",
-    "tenantId": "tnt_..."
+    "tenantId": "tnt_...",
+    "roles": ["admin"]
   }
 }
 ```
 
-## Get Current User
+## Verify Credentials (No JWT)
 
-Retrieve the currently authenticated user's profile.
+```bash
+POST /api/v1/auth/verify-credentials
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "secret"
+}
+```
+
+Used by management apps that mint JWTs themselves.
+
+## Current Profile
 
 ```bash
 GET /api/v1/auth/me
 Authorization: Bearer <jwt>
 ```
 
-**Response** `200 OK`
+## Update Profile
+
+```bash
+PUT /api/v1/auth/me
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "name": "Updated Name",
+  "email": "new@example.com"
+}
+```
+
+## Change Password
+
+```bash
+POST /api/v1/auth/change-password
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "currentPassword": "old-pass",
+  "newPassword": "new-pass-123"
+}
+```
+
+## Device Pairing Flow
+
+1. Runtime calls `POST /api/v1/auth/pairing-code` with flexible auth and `peerId`.
+2. Gateway returns `{ token, deepLink }`.
+3. Mobile app opens `deepLink` and then calls `POST /api/v1/auth/pair` with:
 
 ```json
 {
-  "id": "usr_...",
-  "email": "admin@example.com",
-  "name": "Admin",
-  "tenantId": "tnt_..."
+  "pairingToken": "...",
+  "pushToken": "...",
+  "platform": "ios",
+  "deviceName": "iPhone 16"
+}
+```
+
+`/pair` response:
+
+```json
+{
+  "token": "<device-jwt>",
+  "gatewayUrl": "https://...",
+  "peerId": "usr_..."
 }
 ```

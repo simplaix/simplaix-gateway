@@ -1,11 +1,25 @@
 ---
 title: API Keys
-description: Create, list, and revoke Gateway API keys (gk_) for server-to-server authentication.
+description: Admin APIs for creating, listing, and revoking Gateway API keys (`gk_...`).
 ---
 
-All API key management endpoints require JWT authentication (admin).
+## Endpoint Map
 
-## Create API Key
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/admin/api-keys` | JWT + role `admin`/`tenant_admin` | Create API key |
+| `GET` | `/api/v1/admin/api-keys` | JWT + role `admin`/`tenant_admin` | List key metadata |
+| `DELETE` | `/api/v1/admin/api-keys/:id` | JWT + role `admin`/`tenant_admin` | Revoke key |
+
+## Scopes
+
+| Scope | Description |
+|---|---|
+| `credentials:resolve` | Resolve/check credentials |
+| `credentials:read` | Read credential metadata |
+| `credentials:write` | Store/update credentials |
+
+## Create Key
 
 ```bash
 POST /api/v1/admin/api-keys
@@ -13,49 +27,34 @@ Authorization: Bearer <jwt>
 Content-Type: application/json
 
 {
-  "name": "Agent Server",
-  "scopes": ["credentials:resolve"]
+  "name": "Agent Runtime",
+  "scopes": ["credentials:resolve"],
+  "expiresAt": "2026-06-01T00:00:00.000Z"
 }
 ```
-
-**Response** `201 Created`
 
 ```json
 {
-  "id": "key_...",
-  "key": "gk_xxx...",
-  "name": "Agent Server",
-  "scopes": ["credentials:resolve"],
-  "keyPrefix": "gk_xxxx",
-  "isActive": true,
-  "createdAt": "2025-01-01T00:00:00.000Z"
+  "success": true,
+  "message": "API key created. Store this key securely — it will not be shown again!",
+  "key": "gk_...",
+  "keyRecord": {
+    "id": "...",
+    "keyPrefix": "gk_xxxx",
+    "name": "Agent Runtime",
+    "scopes": ["credentials:resolve"],
+    "isActive": true
+  }
 }
 ```
 
-The full `key` value is only returned at creation time. Store it securely.
+The full `key` is returned only once.
 
-## Available Scopes
-
-| Scope | Description |
-|-------|-------------|
-| `credentials:resolve` | Resolve credentials for a user |
-| `credentials:read` | Read credential metadata |
-| `credentials:write` | Store or update credentials |
-
-## List API Keys
+## List Keys
 
 ```bash
 GET /api/v1/admin/api-keys
 Authorization: Bearer <jwt>
 ```
 
-Returns key metadata including prefix, name, scopes, and status. The full key is never returned.
-
-## Revoke API Key
-
-```bash
-DELETE /api/v1/admin/api-keys/:id
-Authorization: Bearer <jwt>
-```
-
-Revoking an API key immediately invalidates it. Any agent runtimes using it will receive authentication errors.
+Returns metadata only (never raw key).

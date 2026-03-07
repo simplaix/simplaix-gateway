@@ -1,94 +1,87 @@
 ---
-title: MCP Proxy
-description: Proxy endpoints for routing MCP tool calls to upstream servers with policy enforcement.
+title: MCP Endpoints
+description: Unified MCP endpoint and per-provider MCP proxy (Streamable HTTP).
 ---
 
-In addition to the protocol-agnostic [agent invoke endpoint](/docs/api-reference/agents#invoke-agent), the Gateway provides a dedicated MCP proxy for JSON-RPC tool calls. This proxy routes tool calls from agent runtimes to upstream MCP servers with policy enforcement, confirmation workflows, and credential injection. All proxy endpoints use API key authentication.
+## Endpoint Map
 
-## Request Flow
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/mcp/mcp` | Flexible auth | Unified MCP JSON-RPC endpoint |
+| `GET` | `/api/v1/mcp/mcp` | Flexible auth | Unified session resumption (requires `Mcp-Session-Id`) |
+| `DELETE` | `/api/v1/mcp/mcp` | Flexible auth | Unified session termination |
+| `POST` | `/api/v1/mcp-proxy/:providerId/mcp` | Flexible auth | Direct per-provider MCP proxy |
+| `GET` | `/api/v1/mcp-proxy/:providerId/mcp` | Flexible auth | Per-provider session resumption |
+| `DELETE` | `/api/v1/mcp-proxy/:providerId/mcp` | Flexible auth | Per-provider session termination |
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant C as Agent Runtime
-    participant GW as Gateway
-    participant Auth as Auth Middleware
-    participant PE as Policy Engine
-    participant RP as Request Pauser
-    participant Audit as Audit Service
-    participant MCP as Upstream MCP
+Flexible auth supports JWT, `gk_` API key (+ JWT or `X-User-Id`), and `art_` runtime token.
 
-    C->>GW: POST /v1/mcp/tools/call<br/>X-Api-Key: gk_xxx + X-Agent-Id
-    GW->>Auth: Authenticate (API key + agent)
-    Auth-->>GW: User + Agent context
+## Unified MCP (`/api/v1/mcp/mcp`)
 
-    GW->>PE: Evaluate policy for tool
-    PE-->>GW: allow / deny / require_confirmation
+Supported JSON-RPC methods:
 
-    alt Policy: deny
-        GW-->>C: 403 Forbidden
-    else Policy: require_confirmation
-        GW->>RP: Pause request
-        Note over RP: Waiting for confirmation...
-        RP-->>GW: Approved
-    end
+- `initialize`
+- `notifications/initialized`
+- `tools/list`
+- `tools/call`
+- `ping`
 
-    GW->>GW: Resolve credentials
-    GW->>Audit: Create log (pending)
-    GW->>MCP: Forward + identity + credential headers
-    MCP-->>GW: Response
-    GW->>Audit: Update log (completed)
-    GW-->>C: Response
-```
+Optional query parameter:
 
-## Call a Tool
+- `providers=id1,id2` to constrain tool listing/calling to specific providers
+
+### Example: tools/list
 
 ```bash
-POST /api/v1/mcp/tools/call
-X-Api-Key: gk_xxx
-X-Agent-Id: <agent-id>
-X-User-Id: <user-id>
+POST /api/v1/mcp/mcp
+Authorization: Bearer <jwt>
 Content-Type: application/json
 
 {
-  "name": "get_balance",
-  "arguments": { "account_id": "user123" }
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {}
 }
 ```
 
-The Gateway will:
-1. Authenticate the API key and resolve the agent
-2. Evaluate the policy engine for the tool name
-3. Resolve and inject credentials
-4. Forward the request to the agent's upstream server
-5. Return the upstream response
-
-## List Tools
+### Example: tools/call
 
 ```bash
-GET /api/v1/mcp/tools/list
+POST /api/v1/mcp/mcp
 X-Api-Key: gk_xxx
 X-Agent-Id: <agent-id>
-```
-
-## Read a Resource
-
-```bash
-POST /api/v1/mcp/resources/read
-X-Api-Key: gk_xxx
-X-Agent-Id: <agent-id>
-X-User-Id: <user-id>
+X-User-Id: <end-user-id>
 Content-Type: application/json
 
 {
-  "uri": "resource://example"
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "slack_send_message",
+    "arguments": { "channel": "#ops", "text": "hello" }
+  }
 }
 ```
 
-## List Resources
+## Per-Provider MCP Proxy (`/api/v1/mcp-proxy/:providerId/mcp`)
 
-```bash
-GET /api/v1/mcp/resources/list
-X-Api-Key: gk_xxx
-X-Agent-Id: <agent-id>
-```
+Use this when the caller already knows the provider.
+
+- Same Streamable HTTP transport behavior (`POST/GET/DELETE`)
+- Same policy pipeline for `tools/call`
+- Provider-level ACL is checked before forwarding
+
+## Policy Behavior for `tools/call`
+
+1. Provider access ACL check
+2. Tool policy evaluation
+3. Decision:
+   - `allow`: forwarded upstream
+   - `deny`: JSON-RPC error returned (`403`)
+   - `require_confirmation`: connection held until confirmation resolves
+
+## Session Headers
+
+For Streamable HTTP sessions, send/receive `Mcp-Session-Id`.

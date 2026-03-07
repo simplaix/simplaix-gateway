@@ -1,314 +1,290 @@
 ---
-title: Gateway Admin
+title: Gateway Admin Guide
 description: Deploy, configure, and manage a Simplaix Gateway instance.
 ---
 
-This guide is for **platform administrators** who deploy and operate a Simplaix Gateway instance. You'll learn how to configure authentication, manage users, set up tool providers, define policies, control access, and monitor the system.
+This guide is for **platform administrators** who deploy and operate a Simplaix Gateway instance. You'll learn how to configure authentication, manage users and agents, define access policies, set up credential providers, and monitor the system.
 
 ## Overview
 
-As a Gateway Admin, you are responsible for:
+As a Gateway Admin you are responsible for:
 
-1. **Deploying** the Gateway (local, Vercel, or custom infrastructure)
-2. **Configuring** authentication, database, encryption, and external identity providers
-3. **Managing users** and roles
-4. **Registering tool providers** and configuring access control
-5. **Defining policies** for tool-call governance
-6. **Setting up credential providers** for the credential vault
-7. **Monitoring** via audit logs and health checks
+1. **Deploying** the Gateway and configuring environment variables
+2. **Managing users** and assigning roles
+3. **Registering agents** and issuing runtime tokens
+4. **Configuring tool providers** (MCP servers) and access policies
+5. **Setting up credential providers** for the credential vault
+6. **Monitoring** via audit logs
+
+---
 
 ## Quick Start
 
-### Step 1: Install and Configure
+Install the Gateway CLI globally and scaffold a config:
 
 ```bash
-# Clone the repository
-git clone https://github.com/simplaix/simplaix-gateway.git
-cd simplaix-gateway
-
-# Install dependencies
-pnpm install
-
-# Copy environment template
-cp .env.example .env
+npm install -g @simplaix/simplaix-gateway
+gateway init
+gateway start
+gateway admin create --email admin@example.com --password changeme
 ```
 
-Edit `.env` with your settings:
+The Gateway starts on port `7521` by default. See [Deployment](/docs/getting-started/deployment) for production deployment options.
 
-```bash
-# ===== JWT Configuration =====
-JWT_SECRET=generate-a-strong-random-secret-here
-JWT_ISSUER=simplaix-gateway
-JWT_EXPIRES_IN=24h
+---
 
-# ===== Initial Admin User =====
-ADMIN_EMAIL=admin@yourcompany.com
-ADMIN_PASSWORD=a-strong-admin-password
-
-# ===== Database =====
-# SQLite (default, zero setup — uses absolute path so all commands share one DB)
-DATABASE_URL=file:~/.simplaix-gateway/data/gateway.db
-# PostgreSQL: DATABASE_URL=postgres://user:pass@host/db
-
-# ===== Credential Encryption =====
-# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-CREDENTIAL_ENCRYPTION_KEY=your-64-character-hex-string
-
-# ===== Default MCP Server =====
-MCP_SERVER_URL=http://localhost:8080
-```
-
-### Step 2: Start the Gateway
-
-```bash
-# Development mode
-pnpm dev
-
-# The Gateway starts on http://localhost:3001
-```
-
-### Step 3: Verify
-
-```bash
-# Health check
-curl http://localhost:3001/api/health
-
-# Login as admin
-curl -X POST http://localhost:3001/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "admin@yourcompany.com", "password": "a-strong-admin-password"}'
-```
-
-### Step 4: Start the Dashboard (optional)
-
-```bash
-cd gateway-app
-pnpm install
-pnpm dev
-# Dashboard available at http://localhost:3000
-```
-
-## Configuration Reference
-
-### Environment Variables
+## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `JWT_SECRET` | Yes | - | Secret for signing gateway JWTs (HMAC) |
-| `JWT_PUBLIC_KEY` | No | - | PEM public key for asymmetric JWT (RSA/EC) |
-| `JWT_ISSUER` | No | `simplaix-gateway` | JWT issuer claim |
-| `JWT_AUDIENCE` | No | - | JWT audience claim |
-| `JWT_EXPIRES_IN` | No | `24h` | Token expiration (`1h`, `7d`, etc.) |
-| `JWT_EXTERNAL_ISSUERS` | No | - | JSON array of external IdP configs |
-| `ADMIN_EMAIL` | No | - | Initial admin email (created on first boot) |
-| `ADMIN_PASSWORD` | No | - | Initial admin password |
-| `DATABASE_URL` | No | `file:~/.simplaix-gateway/data/gateway.db` | SQLite `file:` path or PostgreSQL `postgres://` URL |
-| `CREDENTIAL_ENCRYPTION_KEY` | No | - | 64-char hex key for AES-256-GCM |
+| `JWT_SECRET` | Yes | — | Secret for signing/verifying JWTs (min 32 chars) |
+| `JWT_PUBLIC_KEY` | No | — | PEM public key for asymmetric JWT (RSA/EC) |
+| `JWT_ISSUER` | No | `simplaix-gateway` | JWT `iss` claim |
+| `JWT_AUDIENCE` | No | — | JWT `aud` claim |
+| `JWT_EXPIRES_IN` | No | `24h` | Token expiration |
+| `JWT_EXTERNAL_ISSUERS` | No | — | JSON array of external IdP configs |
+| `ADMIN_EMAIL` | No | — | Auto-created admin on first boot |
+| `ADMIN_PASSWORD` | No | — | Password for auto-created admin |
+| `DATABASE_URL` | No | SQLite `~/.simplaix-gateway/data/gateway.db` | SQLite `file:` path or `postgres://` URL |
+| `CREDENTIAL_ENCRYPTION_KEY` | Yes | — | 64-char hex key for AES-256-GCM |
+| `PORT` | No | `7521` | HTTP port |
+| `GATEWAY_PUBLIC_URL` | No | — | Public base URL for OAuth callbacks and pairing links |
+| `OAUTH_CALLBACK_BASE_URL` | No | — | Override OAuth callback base separately |
 | `MCP_SERVER_URL` | No | `http://localhost:8080` | Default MCP server URL |
-| `OAUTH_CALLBACK_BASE_URL` | No | - | Base URL for OAuth callbacks |
 
-### External Identity Providers
+### External identity providers
 
-To accept JWTs from external IdPs (Auth0, Azure AD, Okta, etc.):
-
-```bash
-JWT_EXTERNAL_ISSUERS='[
-  {
-    "issuer": "https://your-tenant.auth0.com/",
-    "jwksUri": "https://your-tenant.auth0.com/.well-known/jwks.json",
-    "audience": "simplaix-gateway"
-  },
-  {
-    "issuer": "https://login.microsoftonline.com/TENANT_ID/v2.0",
-    "jwksUri": "https://login.microsoftonline.com/TENANT_ID/discovery/v2.0/keys",
-    "audience": "api://simplaix-gateway"
-  }
-]'
-```
-
-Each issuer config supports:
-
-| Field | Description |
-|-------|-------------|
-| `issuer` | JWT `iss` claim to match |
-| `secret` | Shared secret for HMAC (HS256) validation |
-| `jwksUri` | JWKS endpoint URL for RSA/EC validation |
-| `audience` | Expected `aud` claim |
-
-### Database
-
-**SQLite** (development, single-instance):
+To accept JWTs from Auth0, Azure AD, Okta, etc.:
 
 ```bash
-DATABASE_URL=file:~/.simplaix-gateway/data/gateway.db
+# OIDC / JWKS
+JWT_EXTERNAL_ISSUERS='[{
+  "issuer": "https://your-tenant.auth0.com/",
+  "jwksUri": "https://your-tenant.auth0.com/.well-known/jwks.json",
+  "audience": "simplaix-gateway"
+}]'
+
+# Shared secret (HS256)
+JWT_EXTERNAL_ISSUERS='[{
+  "issuer": "https://auth.example.com",
+  "secret": "shared-secret",
+  "audience": "simplaix-gateway"
+}]'
 ```
 
-**PostgreSQL** (production, multi-instance):
-
-```bash
-DATABASE_URL=postgres://user:password@host:5432/gateway
-```
-
-Run migrations:
-
-```bash
-pnpm db:generate
-pnpm db:migrate
-```
+---
 
 ## User Management
 
 ### Roles
 
-The Gateway has three built-in roles:
-
 | Role | Permissions |
 |------|-------------|
-| `admin` | Full access: manage users, agents, providers, view all audit logs |
-| `tenant_admin` | Manage agents and providers within own tenant, view tenant audit logs |
+| `admin` | Full access — manage all users, agents, providers, audit logs across all tenants |
+| `tenant_admin` | Admin within own tenant — manage agents, providers, policies, view tenant audit logs |
 | `agent_creator` | Create and manage own agents, view own audit logs |
 
-### Create Users
+### Create a user
 
 ```bash
-# Create a user (admin only)
-curl -X POST http://localhost:3001/api/v1/admin/users \
+curl -X POST https://<your-gateway-url>/api/v1/admin/users \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "creator@company.com",
+    "email": "dev@example.com",
     "password": "securepass123",
-    "name": "Agent Developer",
+    "name": "Alice",
     "tenantId": "tenant-acme",
     "roles": ["agent_creator"]
   }'
 ```
 
-### Manage Roles
+`roles` defaults to `["agent_creator"]` if omitted.
+
+### Manage roles
 
 ```bash
 # Assign a role
-curl -X POST http://localhost:3001/api/v1/admin/users/<user-id>/roles \
+curl -X POST https://<your-gateway-url>/api/v1/admin/users/<user-id>/roles \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{"role": "tenant_admin"}'
 
 # Remove a role
-curl -X DELETE http://localhost:3001/api/v1/admin/users/<user-id>/roles/tenant_admin \
+curl -X DELETE https://<your-gateway-url>/api/v1/admin/users/<user-id>/roles/tenant_admin \
   -H "Authorization: Bearer <admin-jwt>"
 ```
 
-### List Users
+### List and delete users
 
 ```bash
-curl http://localhost:3001/api/v1/admin/users \
+# List all users
+curl https://<your-gateway-url>/api/v1/admin/users \
+  -H "Authorization: Bearer <admin-jwt>"
+
+# Delete a user
+curl -X DELETE https://<your-gateway-url>/api/v1/admin/users/<user-id> \
   -H "Authorization: Bearer <admin-jwt>"
 ```
+
+---
+
+## Agent Management
+
+### Register an agent
+
+```bash
+curl -X POST https://<your-gateway-url>/api/v1/admin/agents \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Support Agent",
+    "upstreamUrl": "http://support-agent:8000",
+    "description": "Handles customer inquiries",
+    "tenantId": "tenant-acme"
+  }'
+```
+
+**Request fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Display name |
+| `upstreamUrl` | Yes | URL of the agent runtime |
+| `upstreamSecret` | No | Bearer token sent to the upstream runtime |
+| `description` | No | Human-readable description |
+| `requireConfirmation` | No | Require confirmation for all tool calls (default: `false`) |
+| `requiredCredentials` | No | Credential requirements for the agent |
+| `tenantId` | No | Tenant scope |
+
+The response includes a `runtime_token` (`art_...`) — **store it immediately, it is shown only once**.
+
+```json
+{
+  "success": true,
+  "agent": {
+    "id": "abc123",
+    "name": "Support Agent",
+    "upstreamUrl": "http://support-agent:8000",
+    "isActive": true,
+    "requireConfirmation": false,
+    "runtimeTokenPrefix": "art_xxxx",
+    "createdAt": "2025-01-15T10:00:00Z"
+  },
+  "runtime_token": "art_xxxxxxxxxxxxxxxx..."
+}
+```
+
+### Kill switch
+
+```bash
+# Disable — all invocations immediately return 403
+curl -X POST https://<your-gateway-url>/api/v1/admin/agents/<id>/disable \
+  -H "Authorization: Bearer <admin-jwt>"
+
+# Re-enable
+curl -X POST https://<your-gateway-url>/api/v1/admin/agents/<id>/enable \
+  -H "Authorization: Bearer <admin-jwt>"
+```
+
+### Regenerate runtime token
+
+```bash
+curl -X POST https://<your-gateway-url>/api/v1/admin/agents/<id>/regenerate-token \
+  -H "Authorization: Bearer <admin-jwt>"
+# Returns a new runtime_token — the old one is immediately invalidated
+```
+
+---
 
 ## API Key Management
 
-API Keys (`gk_` prefix) provide server-to-server trust for agent runtimes calling back into the Gateway.
+API keys (`gk_` prefix) provide server-to-server authentication for agent runtimes or external services calling the Gateway.
 
-### Create an API Key
+### Create an API key
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/admin/api-keys \
+curl -X POST https://<your-gateway-url>/api/v1/admin/api-keys \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Production Agent Server",
-    "scopes": ["credentials:resolve", "credentials:read"]
+    "scopes": ["credentials:resolve"]
   }'
-# Response: { "key": "gk_xxxxxxxxxxx...", ... }
-# ⚠️  The key is shown only once!
 ```
+
+The full key is returned once in the response — store it securely.
 
 ### Scopes
 
 | Scope | Description |
 |-------|-------------|
-| `credentials:resolve` | Resolve user credentials (default) |
+| `credentials:resolve` | Resolve user credentials for injection (default) |
 | `credentials:read` | Read credential metadata |
 | `credentials:write` | Store/update credentials on behalf of users |
 
-### List and Revoke
+### List and revoke
 
 ```bash
-# List keys
-curl http://localhost:3001/api/v1/admin/api-keys \
+# List (shows keyPrefix, not the full key)
+curl https://<your-gateway-url>/api/v1/admin/api-keys \
   -H "Authorization: Bearer <admin-jwt>"
 
-# Revoke a key
-curl -X DELETE http://localhost:3001/api/v1/admin/api-keys/<key-id> \
+# Revoke
+curl -X DELETE https://<your-gateway-url>/api/v1/admin/api-keys/<key-id> \
   -H "Authorization: Bearer <admin-jwt>"
 ```
+
+---
 
 ## Tool Provider Management
 
-Tool Providers map tool name patterns to upstream MCP server endpoints. They control where tool calls are routed.
+Tool Providers map glob patterns to upstream MCP server endpoints — they define where tool calls are routed.
 
-### Create a Tool Provider
+### Create a tool provider
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/admin/tool-providers \
+curl -X POST https://<your-gateway-url>/api/v1/admin/tool-providers \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Slack Integration",
+    "name": "Slack MCP",
     "pattern": "slack_*",
-    "endpoint": "http://slack-mcp-server:3000",
+    "endpoint": "http://slack-mcp:3000",
     "authType": "bearer",
-    "authSecret": "upstream-mcp-secret",
-    "priority": 10,
-    "description": "Routes slack_* tool calls to the Slack MCP server"
+    "authSecret": "upstream-secret",
+    "priority": 10
   }'
 ```
 
-### Pattern Matching
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Display name |
+| `pattern` | Yes | Glob pattern matching tool names (e.g., `slack_*`, `*`) |
+| `endpoint` | Yes | MCP server URL |
+| `authType` | No | `bearer`, `api_key`, or `none` (default) |
+| `authSecret` | No | Token sent to upstream if `authType` is set |
+| `priority` | No | Higher value = checked first when multiple patterns match |
+| `description` | No | Description |
 
-Tool providers use glob patterns to match tool names:
-
-| Pattern | Matches |
-|---------|---------|
-| `slack_*` | `slack_send_message`, `slack_list_channels` |
-| `github_*` | `github_create_issue`, `github_list_repos` |
-| `*` | All tools (catch-all, use with low priority) |
-
-Higher `priority` values match first.
-
-### Authentication Types
-
-| Auth Type | Description |
-|-----------|-------------|
-| `none` | No authentication to upstream |
-| `bearer` | `Authorization: Bearer <authSecret>` |
-| `api_key` | `X-API-Key: <authSecret>` |
-
-### CRUD Operations
+### Fetch tools from a provider
 
 ```bash
-# List providers
-GET /api/v1/admin/tool-providers
-
-# Get a specific provider
-GET /api/v1/admin/tool-providers/:id
-
-# Update a provider
-PUT /api/v1/admin/tool-providers/:id
-
-# Delete a provider
-DELETE /api/v1/admin/tool-providers/:id
+curl https://<your-gateway-url>/api/v1/admin/tool-providers/<id>/tools \
+  -H "Authorization: Bearer <admin-jwt>"
 ```
 
-## Provider Access Control (ACL)
+---
 
-ACL rules control which users and roles can access which tool providers through the MCP Proxy.
+## Provider Access Control
 
-### Create Access Rules
+Access rules control which users and agents can invoke which tools on which providers.
+
+### Create an access rule
 
 ```bash
 # Allow a specific user to access a provider
-curl -X POST http://localhost:3001/api/v1/admin/provider-access \
+curl -X POST https://<your-gateway-url>/api/v1/admin/provider-access \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -318,19 +294,21 @@ curl -X POST http://localhost:3001/api/v1/admin/provider-access \
     "action": "allow"
   }'
 
-# Allow an agent to access all providers
-curl -X POST http://localhost:3001/api/v1/admin/provider-access \
+# Require confirmation for dangerous tools
+curl -X POST https://<your-gateway-url>/api/v1/admin/provider-access \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
     "subjectType": "agent",
-    "subjectId": "agent-abc123",
-    "providerId": "*",
-    "action": "allow"
+    "subjectId": "agent-abc",
+    "providerId": "files-provider-id",
+    "action": "require_confirmation",
+    "toolPattern": "delete_*",
+    "riskLevel": "critical"
   }'
 
-# Deny a specific user from a sensitive provider
-curl -X POST http://localhost:3001/api/v1/admin/provider-access \
+# Deny a user from a sensitive provider
+curl -X POST https://<your-gateway-url>/api/v1/admin/provider-access \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -341,354 +319,181 @@ curl -X POST http://localhost:3001/api/v1/admin/provider-access \
   }'
 ```
 
-### Subject Types
+**Rule fields:**
 
-| Type | Description | `subjectId` example |
-|------|-------------|---------------------|
-| `user` | Specific user | User ID (`usr_abc123`) |
-| `agent` | A registered agent | Agent ID (`agent-abc123`) |
+| Field | Required | Description |
+|-------|----------|-------------|
+| `subjectType` | Yes | `user` or `agent` |
+| `subjectId` | Yes | User ID or agent ID |
+| `providerId` | Yes | Tool provider ID, or `*` for all providers |
+| `action` | Yes | `allow`, `deny`, or `require_confirmation` |
+| `toolPattern` | No | Glob pattern for tool names (default: `*`) |
+| `riskLevel` | No | `low`, `medium`, `high`, or `critical` |
 
-### Evaluation Order
+### Set agent rules atomically
 
-1. **User-level deny** rules are checked first
-2. **User-level allow** rules are checked next
-3. **Agent-level deny** rules
-4. **Agent-level allow** rules
-5. **Wildcard** provider rules (deny, then allow)
-6. If no rules match, access is **denied by default** (whitelist model)
-
-### List and Delete Rules
+Replace all access rules for an agent in one request:
 
 ```bash
-# List all rules
-GET /api/v1/admin/provider-access
-
-# Get a specific rule
-GET /api/v1/admin/provider-access/:id
-
-# Delete a rule
-DELETE /api/v1/admin/provider-access/:id
-```
-
-## Policy Engine
-
-Policies control what happens when a tool is called. They are configured in `src/config.ts`.
-
-### Default Policies
-
-```typescript
-const policies = [
-  { tool: 'transfer_money', action: 'require_confirmation', risk: 'high' },
-  { tool: 'delete_*',       action: 'require_confirmation', risk: 'critical' },
-  { tool: 'write_*',        action: 'require_confirmation', risk: 'medium' },
-  { tool: 'read_*',         action: 'allow',               risk: 'low' },
-  { tool: '*',              action: 'allow',               risk: 'low' },
-];
-```
-
-### Policy Actions
-
-| Action | Behavior |
-|--------|----------|
-| `allow` | Proceeds immediately |
-| `deny` | Blocked with 403 Forbidden |
-| `require_confirmation` | Pauses until a human confirms via SSE |
-
-### Risk Levels
-
-| Level | Description |
-|-------|-------------|
-| `low` | Read-only operations |
-| `medium` | Write operations |
-| `high` | Financial or sensitive operations |
-| `critical` | Destructive operations (delete, etc.) |
-
-## Credential Provider Setup
-
-Credential Providers define how each external service credential type works.
-
-### Create a Credential Provider
-
-**JWT-based (e.g., Gateway API access):**
-
-```bash
-curl -X POST http://localhost:3001/api/v1/credential-providers \
+curl -X PUT https://<your-gateway-url>/api/v1/admin/provider-access/agent/<agent-id> \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Gateway API",
-    "serviceType": "gateway_api",
-    "authType": "jwt",
-    "description": "Access to Gateway management APIs",
-    "config": {
-      "connectUrl": "/auth/connect?service=gateway_api",
-      "jwt": {
-        "headerName": "Authorization",
-        "prefix": "Bearer "
-      }
-    }
+    "rules": [
+      { "providerId": "slack-provider-id", "action": "allow" },
+      { "providerId": "files-provider-id", "action": "require_confirmation", "toolPattern": "delete_*", "riskLevel": "critical" }
+    ]
   }'
 ```
 
-**API Key-based (e.g., Stripe):**
+### Policy evaluation
+
+Test a policy before deploying:
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/credential-providers \
+curl -X POST https://<your-gateway-url>/api/v1/admin/provider-access/evaluate \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "user-123",
+    "providerId": "slack-provider-id",
+    "toolName": "slack_send_message",
+    "agentId": "agent-abc"
+  }'
+# Returns: { "action": "allow|deny|require_confirmation", "risk": "low|...", "matchedRule": {...} }
+```
+
+### Evaluation order
+
+1. User-level **deny** rules
+2. User-level **allow** rules
+3. Agent-level **deny** rules
+4. Agent-level **allow** rules
+5. Wildcard provider rules (deny, then allow)
+6. No match → **denied by default**
+
+---
+
+## Credential Provider Setup
+
+Credential Providers define how each service credential type works. Users store credentials against these providers; agents receive them as injected headers.
+
+### `api_key` provider
+
+```bash
+curl -X POST https://<your-gateway-url>/api/v1/credential-providers \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Stripe",
-    "serviceType": "stripe_api",
+    "serviceType": "stripe",
     "authType": "api_key",
-    "description": "Stripe payment API access",
-    "config": {
-      "connectUrl": "/auth/connect?service=stripe_api",
-      "apiKey": {
-        "headerName": "Authorization",
-        "prefix": "Bearer "
-      }
-    }
+    "description": "Stripe payment API"
   }'
 ```
 
-**OAuth2 (e.g., Google):**
+### `oauth2` provider
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/credential-providers \
+curl -X POST https://<your-gateway-url>/api/v1/credential-providers \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Google",
     "serviceType": "google",
     "authType": "oauth2",
-    "description": "Google API access",
     "config": {
-      "oauth2": {
-        "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
-        "tokenUrl": "https://oauth2.googleapis.com/token",
-        "clientId": "your-client-id",
-        "clientSecret": "your-client-secret",
-        "defaultScopes": ["openid", "email", "https://www.googleapis.com/auth/calendar"]
-      }
+      "clientId": "your-client-id",
+      "clientSecret": "your-client-secret",
+      "scopes": ["openid", "email", "https://www.googleapis.com/auth/calendar"]
     }
   }'
 ```
 
-### Supported Auth Types
-
-| Type | Use Case | Config Section |
-|------|----------|---------------|
-| `jwt` | Service tokens, API JWTs | `config.jwt` |
-| `api_key` | API keys (Stripe, OpenAI, etc.) | `config.apiKey` |
-| `oauth2` | OAuth2 providers (Google, Slack, etc.) | `config.oauth2` |
-| `basic` | Username/password credentials | `config.basic` |
-
-## Agent Management
-
-### Register an Agent
+### `jwt` provider
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/admin/agents \
+curl -X POST https://<your-gateway-url>/api/v1/credential-providers \
   -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Customer Support Agent",
-    "upstreamUrl": "http://support-agent:8000",
-    "description": "Handles customer inquiries",
-    "requiredCredentials": [
-      { "serviceType": "zendesk", "description": "Zendesk API access" }
-    ],
-    "tenantId": "tenant-acme"
+    "name": "Internal API",
+    "serviceType": "internal_api",
+    "authType": "jwt"
   }'
 ```
 
-### Kill Switch
+### Supported auth types
 
-Instantly disable an agent without deleting it:
+| Type | Use case |
+|------|----------|
+| `api_key` | API keys (Stripe, OpenAI, etc.) |
+| `oauth2` | OAuth2 providers (Google, GitHub, Slack, etc.) |
+| `jwt` | Service tokens and JWTs |
+| `basic` | Username/password credentials |
 
-```bash
-# Disable -- all invocations return 403
-curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/disable \
-  -H "Authorization: Bearer <admin-jwt>"
-
-# Re-enable
-curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/enable \
-  -H "Authorization: Bearer <admin-jwt>"
-```
-
-### Regenerate Runtime Token
-
-If an agent's runtime token is compromised:
-
-```bash
-curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/regenerate-token \
-  -H "Authorization: Bearer <admin-jwt>"
-# Returns new runtime_token (old one is immediately invalidated)
-```
+---
 
 ## Multi-Tenancy
 
-The Gateway supports tenant isolation across all resources:
+All resources can be scoped to a `tenantId`. Users and agents in different tenants are fully isolated — they cannot see or access each other's agents, credentials, or providers.
 
-- **Agents** are scoped to a `tenantId`
-- **Users** belong to a tenant
-- **Credentials** are isolated per user and tenant
-- **Tool Providers** can be global or tenant-scoped
-- **ACL rules** are tenant-aware
+- `admin` — can manage all tenants; pass `tenantId` in request body to scope operations
+- `tenant_admin` and `agent_creator` — automatically pinned to their own tenant
 
-Users in different tenants cannot see or access each other's agents and credentials.
+Resources with `tenantId: null` are global and visible to all tenants.
 
-### Setting Up Tenants
+---
 
-1. Create users with tenant IDs:
+## Audit Logs
 
-```bash
-curl -X POST http://localhost:3001/api/v1/admin/users \
-  -H "Authorization: Bearer <admin-jwt>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "dev@acme.com",
-    "password": "password123",
-    "tenantId": "tenant-acme",
-    "roles": ["agent_creator"]
-  }'
-```
-
-2. Agents created by tenant users inherit the tenant:
+Every tool call is recorded with full context.
 
 ```bash
-# When dev@acme.com creates an agent, it gets tenantId: "tenant-acme"
-# Users from other tenants cannot see or invoke it
-```
-
-## Monitoring and Audit
-
-### Audit Logs
-
-Query all tool calls with full context:
-
-```bash
-# Get recent logs
-curl "http://localhost:3001/api/v1/audit/logs?limit=50" \
+# Recent logs
+curl "https://<your-gateway-url>/api/v1/audit/logs?limit=50" \
   -H "Authorization: Bearer <admin-jwt>"
 
-# Filter by agent
-curl "http://localhost:3001/api/v1/audit/logs?agent_id=abc123" \
+# Filter by agent, user, tool, or status
+curl "https://<your-gateway-url>/api/v1/audit/logs?agent_id=abc&status=failed" \
   -H "Authorization: Bearer <admin-jwt>"
 
-# Filter by status
-curl "http://localhost:3001/api/v1/audit/logs?status=failed" \
-  -H "Authorization: Bearer <admin-jwt>"
-
-# Filter by tool name
-curl "http://localhost:3001/api/v1/audit/logs?tool_name=transfer_money" \
+# Aggregate stats
+curl https://<your-gateway-url>/api/v1/audit/stats \
   -H "Authorization: Bearer <admin-jwt>"
 ```
 
-Each audit log entry contains:
+**Query parameters:** `user_id`, `agent_id`, `tool_name`, `status`, `start_date`, `end_date`, `limit`, `offset`
+
+**Log entry fields:**
 
 | Field | Description |
 |-------|-------------|
-| `userId` | Who authenticated the request |
-| `agentId` | Which agent made the call |
-| `endUserId` | The human end-user |
-| `providerId` | Which tool provider handled it |
-| `toolName` | The tool that was called |
+| `userId` | Authenticated user |
+| `agentId` | Agent that made the call |
+| `endUserId` | End user the agent was acting on behalf of |
+| `providerId` | Tool provider that handled the call |
+| `toolName` | Tool invoked |
 | `arguments` | Tool call arguments (JSON) |
-| `result` | Tool call result (JSON) |
-| `status` | `pending`, `completed`, `failed`, `confirmed`, `rejected` |
-| `duration` | Execution time in milliseconds |
+| `result` | Tool response (JSON) |
+| `status` | `pending` / `confirmed` / `rejected` / `completed` / `failed` |
+| `duration` | Execution time in ms |
+| `confirmedBy` | User who approved the confirmation (if applicable) |
 
-### Audit Statistics
+---
 
-```bash
-curl http://localhost:3001/api/v1/audit/stats \
-  -H "Authorization: Bearer <admin-jwt>"
-```
+## Production Checklist
 
-### Health Check
+- [ ] Set a strong `JWT_SECRET` (`openssl rand -hex 32`)
+- [ ] Generate a `CREDENTIAL_ENCRYPTION_KEY` (`openssl rand -hex 32`)
+- [ ] Use PostgreSQL (`DATABASE_URL=postgres://...`)
+- [ ] Change the default admin password immediately after first login
+- [ ] Set `GATEWAY_PUBLIC_URL` for OAuth callbacks and pairing links
+- [ ] Configure `JWT_EXTERNAL_ISSUERS` if using an external IdP
+- [ ] Enable HTTPS via a reverse proxy (nginx, Caddy) or cloud platform
+- [ ] Set up monitoring for the `/health` endpoint
 
-```bash
-curl http://localhost:3001/api/health
-# Response:
-# {
-#   "status": "healthy",
-#   "services": { "gateway": "healthy", "mcp": "healthy" },
-#   "metrics": { "pendingConfirmations": 0, "mcpLatency": 45 }
-# }
-```
-
-## Dashboard (gateway-app)
-
-The Gateway includes an optional Next.js dashboard with an AI assistant powered by CopilotKit + Strands/AG-UI.
-
-### Starting the Dashboard
-
-```bash
-cd gateway-app
-pnpm install
-pnpm dev
-# Open http://localhost:3000
-```
-
-### Starting the AI Agent
-
-```bash
-cd gateway-app/agent
-pip install -r requirements.txt   # or: uv sync
-uv run main.py
-# Agent runs on http://localhost:8000
-```
-
-The dashboard provides:
-- **Agent management** -- create, update, delete, enable/disable agents
-- **Tool provider management** -- configure MCP server routing
-- **Confirmation management** -- review and respond to pending confirmations
-- **Audit log viewer** -- search and filter tool call history
-- **AI chat assistant** -- manage the Gateway via natural language
-
-## Deployment
-
-### Vercel
-
-The Gateway is built with Hono and configured for Vercel deployment:
-
-```bash
-# Build and deploy
-pnpm build
-pnpm deploy
-
-# Or use Vercel CLI
-vc deploy
-```
-
-Set environment variables in the Vercel dashboard. Use PostgreSQL for production (`DATABASE_URL=postgres://...`).
-
-### Docker (Custom)
-
-Create a `Dockerfile`:
-
-```dockerfile
-FROM node:20-slim
-WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
-COPY . .
-EXPOSE 3001
-CMD ["pnpm", "dev"]
-```
-
-### Production Checklist
-
-- [ ] Set a strong `JWT_SECRET` (or use asymmetric keys with `JWT_PUBLIC_KEY`)
-- [ ] Generate a random `CREDENTIAL_ENCRYPTION_KEY` (64-char hex)
-- [ ] Use PostgreSQL for production (`DATABASE_URL=postgres://...`)
-- [ ] Change the default admin password
-- [ ] Configure CORS origins (update `cors()` in `src/index.ts`)
-- [ ] Set up external IdP for user authentication (`JWT_EXTERNAL_ISSUERS`)
-- [ ] Configure audit log retention policy
-- [ ] Set up monitoring for the `/api/health` endpoint
-- [ ] Enable HTTPS (via reverse proxy or platform)
+---
 
 ## Admin API Reference
 
@@ -708,7 +513,7 @@ CMD ["pnpm", "dev"]
 | `/api/v1/admin/agents/:id` | GET | Get agent |
 | `/api/v1/admin/agents/:id` | PUT | Update agent |
 | `/api/v1/admin/agents/:id` | DELETE | Delete agent |
-| `/api/v1/admin/agents/:id/disable` | POST | Kill switch |
+| `/api/v1/admin/agents/:id/disable` | POST | Kill switch — disable |
 | `/api/v1/admin/agents/:id/enable` | POST | Re-enable |
 | `/api/v1/admin/agents/:id/regenerate-token` | POST | New runtime token |
 | **API Keys** | | |
@@ -721,20 +526,26 @@ CMD ["pnpm", "dev"]
 | `/api/v1/admin/tool-providers/:id` | GET | Get provider |
 | `/api/v1/admin/tool-providers/:id` | PUT | Update provider |
 | `/api/v1/admin/tool-providers/:id` | DELETE | Delete provider |
+| `/api/v1/admin/tool-providers/:id/tools` | GET | Fetch tools from MCP server |
 | **Provider Access** | | |
-| `/api/v1/admin/provider-access` | GET | List ACL rules |
+| `/api/v1/admin/provider-access` | GET | List rules |
 | `/api/v1/admin/provider-access` | POST | Create rule |
 | `/api/v1/admin/provider-access/:id` | GET | Get rule |
+| `/api/v1/admin/provider-access/:id` | PUT | Update rule |
 | `/api/v1/admin/provider-access/:id` | DELETE | Delete rule |
+| `/api/v1/admin/provider-access/agent/:id` | GET | Get agent's rules |
+| `/api/v1/admin/provider-access/agent/:id` | PUT | Set agent's rules (atomic) |
+| `/api/v1/admin/provider-access/evaluate` | POST | Evaluate policy |
 | **Credential Providers** | | |
 | `/api/v1/credential-providers` | GET | List providers |
 | `/api/v1/credential-providers` | POST | Create provider |
 | `/api/v1/credential-providers/:id` | GET | Get provider |
 | `/api/v1/credential-providers/:id` | PUT | Update provider |
 | `/api/v1/credential-providers/:id` | DELETE | Delete provider |
+| `/api/v1/credential-providers/by-service/:type` | GET | Get by service type |
 | **Audit** | | |
 | `/api/v1/audit/logs` | GET | Query logs |
-| `/api/v1/audit/logs/:id` | GET | Get log |
-| `/api/v1/audit/stats` | GET | Statistics |
+| `/api/v1/audit/logs/:id` | GET | Get log entry |
+| `/api/v1/audit/stats` | GET | Aggregate statistics |
 | **Health** | | |
-| `/api/health` | GET | Health check |
+| `/health` | GET | Health check |

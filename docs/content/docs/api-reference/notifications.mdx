@@ -1,0 +1,42 @@
+---
+title: Notifications
+description: Device registration endpoints for push notifications.
+---
+
+## Endpoint Map
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/notifications/devices` | Flexible auth | Register or reactivate device |
+| `GET` | `/api/v1/notifications/devices` | Flexible auth | List active devices for current user |
+| `DELETE` | `/api/v1/notifications/devices/:id` | Flexible auth | Remove device |
+
+## Register Device
+
+```bash
+POST /api/v1/notifications/devices
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "platform": "ios",
+  "pushToken": "<apns-or-fcm-token>",
+  "deviceName": "iPhone 16"
+}
+```
+
+`platform` must be `ios`, `macos`, or `android`.
+
+## List Devices
+
+```bash
+GET /api/v1/notifications/devices
+Authorization: Bearer <jwt>
+```
+
+## Remove Device
+
+```bash
+DELETE /api/v1/notifications/devices/:id
+Authorization: Bearer <jwt>
+```

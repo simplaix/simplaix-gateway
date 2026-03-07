@@ -1,5 +1,5 @@
 {
   "title": "Concepts",
-  "defaultOpen": true,
+  "defaultOpen": false,
   "pages": ["architecture", "agents", "credentials", "policies", "mcp-access-control", "confirmations"]
 }

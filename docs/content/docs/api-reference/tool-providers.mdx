@@ -1,0 +1,44 @@
+---
+title: Tool Providers
+description: Admin APIs for MCP tool-provider routing configuration.
+---
+
+## Endpoint Map
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/admin/tool-providers` | JWT | List providers |
+| `POST` | `/api/v1/admin/tool-providers` | JWT + `provider:create` | Create provider |
+| `GET` | `/api/v1/admin/tool-providers/:id` | JWT | Get provider |
+| `PUT` | `/api/v1/admin/tool-providers/:id` | JWT + `provider:update` | Update provider |
+| `DELETE` | `/api/v1/admin/tool-providers/:id` | JWT + `provider:delete` | Delete provider |
+| `GET` | `/api/v1/admin/tool-providers/:id/tools` | JWT | Fetch upstream `tools/list` |
+
+## Create Provider
+
+```bash
+POST /api/v1/admin/tool-providers
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "name": "Slack MCP",
+  "pattern": "slack_*",
+  "endpoint": "https://mcp.example.com/mcp",
+  "authType": "bearer",
+  "authSecret": "...",
+  "priority": 100,
+  "description": "Slack tools"
+}
+```
+
+`authType` values: `bearer`, `api_key`, `none`.
+
+## Fetch Provider Tools
+
+```bash
+GET /api/v1/admin/tool-providers/:id/tools
+Authorization: Bearer <jwt>
+```
+
+Returns normalized tool metadata from upstream MCP `tools/list`.

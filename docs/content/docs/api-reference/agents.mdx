@@ -1,11 +1,32 @@
 ---
 title: Agents
-description: CRUD operations for managing agents, including invocation and credential pre-checks.
+description: Admin agent management, runtime token lifecycle, and agent invoke APIs.
 ---
 
-All agent management endpoints require JWT authentication.
+## Endpoint Map
 
-## Register Agent
+### Admin Management (`/api/v1/admin/agents`)
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/admin/agents` | JWT + `agent:create` | Create agent and return one-time runtime token |
+| `GET` | `/api/v1/admin/agents` | JWT + `agent:read` | List agents |
+| `GET` | `/api/v1/admin/agents/:id` | JWT + `agent:read` | Get agent details |
+| `PUT` | `/api/v1/admin/agents/:id` | JWT + `agent:update:own` or `agent:update:all` | Update agent |
+| `DELETE` | `/api/v1/admin/agents/:id` | JWT + delete permission | Delete agent |
+| `POST` | `/api/v1/admin/agents/:id/disable` | JWT + update permission | Kill-switch disable |
+| `POST` | `/api/v1/admin/agents/:id/enable` | JWT + update permission | Re-enable |
+| `POST` | `/api/v1/admin/agents/:id/regenerate-token` | JWT + update permission | Rotate runtime token |
+
+### Runtime/User Routes (`/api/v1/agents`)
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/agents/:agentId/invoke` | Flexible auth | Invoke upstream agent runtime |
+| `GET` | `/api/v1/agents/:agentId/credentials-check` | Flexible auth | Pre-check required credentials |
+| `GET` | `/api/v1/agents/:agentId` | Flexible auth | Get public agent info |
+
+## Create Agent
 
 ```bash
 POST /api/v1/admin/agents
@@ -20,72 +41,27 @@ Content-Type: application/json
 }
 ```
 
-**Response** `201 Created`
-
 ```json
 {
-  "id": "agt_...",
-  "name": "Finance Bot",
-  "upstreamUrl": "https://finance-agent.internal/mcp",
-  "isActive": true,
-  "requiredCredentials": [{ "serviceType": "gateway_api" }],
-  "description": "Handles financial queries",
-  "tenantId": "tnt_...",
-  "createdAt": "2025-01-01T00:00:00.000Z"
+  "success": true,
+  "agent": {
+    "id": "agt_...",
+    "name": "Finance Bot",
+    "upstreamUrl": "https://finance-agent.internal/mcp",
+    "hasUpstreamSecret": false,
+    "isActive": true,
+    "requireConfirmation": false,
+    "requiredCredentials": [{ "serviceType": "gateway_api" }],
+    "runtimeTokenPrefix": "art_xxxx",
+    "createdAt": "2026-03-07T12:00:00.000Z"
+  },
+  "runtime_token": "art_..."
 }
 ```
 
-## List Agents
-
-```bash
-GET /api/v1/admin/agents
-Authorization: Bearer <jwt>
-```
-
-## Get Agent
-
-```bash
-GET /api/v1/admin/agents/:id
-Authorization: Bearer <jwt>
-```
-
-## Update Agent
-
-```bash
-PUT /api/v1/admin/agents/:id
-Authorization: Bearer <jwt>
-Content-Type: application/json
-
-{
-  "name": "Updated Finance Bot",
-  "upstreamUrl": "https://new-finance-agent.internal/mcp"
-}
-```
-
-## Delete Agent
-
-```bash
-DELETE /api/v1/admin/agents/:id
-Authorization: Bearer <jwt>
-```
-
-## Disable Agent (Kill Switch)
-
-```bash
-POST /api/v1/admin/agents/:id/disable
-Authorization: Bearer <jwt>
-```
-
-## Enable Agent
-
-```bash
-POST /api/v1/admin/agents/:id/enable
-Authorization: Bearer <jwt>
-```
+`runtime_token` plaintext is only returned on create/rotate.
 
 ## Invoke Agent
-
-Invoke an agent from the frontend. This endpoint is protocol-agnostic -- it forwards the request to the agent's `upstreamUrl` and supports both JSON and SSE streaming responses. The upstream can be any HTTP-based agent runtime (MCP server, CopilotKit agent, Strands/AG-UI agent, or custom service). The Gateway performs credential pre-checks and injects user identity and resolved credentials as headers before forwarding.
 
 ```bash
 POST /api/v1/agents/:agentId/invoke
@@ -97,25 +73,26 @@ Content-Type: application/json
 }
 ```
 
-If required credentials are missing, the response includes auth URLs:
+If credentials are missing:
 
 ```json
 {
-  "status": "CREDENTIALS_REQUIRED",
-  "missingCredentials": [
-    {
-      "serviceType": "gateway_api",
-      "connectUrl": "/auth/connect?service=gateway_api"
-    }
-  ]
+  "code": "CREDENTIALS_REQUIRED",
+  "missing": ["gateway_api"],
+  "authUrls": {
+    "gateway_api": "/auth/connect?service=gateway_api"
+  },
+  "message": "Authentication required for: gateway_api"
 }
 ```
 
-## Pre-check Credentials
+On success, response is JSON-wrapped (`{ success, request_id, data }`) or forwarded SSE stream.
 
-Check credential availability without invoking the agent.
+## Credentials Pre-check
 
 ```bash
 GET /api/v1/agents/:agentId/credentials-check
 Authorization: Bearer <user-jwt>
 ```
+
+Returns `{ ok: true }` when all required credentials are present; otherwise `401` with `CREDENTIALS_REQUIRED` payload.

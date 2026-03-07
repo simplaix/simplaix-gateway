@@ -1,5 +1,5 @@
 {
   "title": "Authentication",
   "defaultOpen": true,
-  "pages": ["index", "jwt", "api-keys"]
+  "pages": ["index"]
 }

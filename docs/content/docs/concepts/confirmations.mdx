@@ -17,14 +17,14 @@ sequenceDiagram
     participant SSE as SSE Stream
     participant U as Confirmer
 
-    C->>GW: POST /v1/mcp/tools/call
+    C->>GW: POST /api/v1/mcp/mcp or /api/v1/mcp-proxy/:providerId/mcp
     GW->>PE: Evaluate policy for tool
     PE-->>GW: require_confirmation
 
     GW->>RP: Pause request
     RP->>SSE: Emit CONFIRMATION_REQUIRED
     SSE->>U: Show decision card
-    U->>GW: POST /v1/confirmation/:id/confirm
+    U->>GW: POST /api/v1/confirmation/:id/confirm
     GW->>RP: Resume request
     RP-->>GW: Forward to upstream
     GW-->>C: Response
@@ -32,11 +32,11 @@ sequenceDiagram
 
 ## How It Works
 
-1. A tool call arrives that matches a `require_confirmation` policy
+1. A tool call arrives on MCP proxy/unified MCP (or tool-gate) and matches `require_confirmation`
 2. The Gateway creates a confirmation record with status `pending`
 3. The request is paused using the Request Pauser service
 4. A `CONFIRMATION_REQUIRED` event is emitted on the SSE stream
-5. A confirmer (admin or designated user) sees the confirmation card in the dashboard
+5. A confirmer (the end-user or an admin in the same tenant) sees the confirmation card in the dashboard
 6. The confirmer confirms or rejects the request
 7. If confirmed, the paused request is resumed and forwarded to the upstream server
 8. If rejected, the request is denied with an appropriate response
@@ -47,8 +47,7 @@ sequenceDiagram
 |--------|-------------|
 | `pending` | Awaiting human decision |
 | `confirmed` | Confirmed by a human, request will proceed |
-| `rejected` | Rejected by a human, request is denied |
-| `expired` | Timed out without a decision |
+| `rejected` | Rejected by a human, or timed out with reason `Request timed out` |
 
 ## SSE Stream
 

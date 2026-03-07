@@ -1,10 +1,19 @@
 {
   "title": "Documentation",
   "pages": [
-    "index",
-    "getting-started",
-    "guides",
+    "---Get started---",
+    "getting-started/index",
+    "getting-started/quick-start",
+    "getting-started/docs-mcp",
+    "---Guides---",
+    "guides/agent-creator",
+    "guides/app-builder",
+    "guides/gateway-admin",
     "concepts",
+    "---Deployment---",
+    "getting-started/deployment",
+
+    "---Reference---",
     "authentication",
     "api-reference",
     "sdks"

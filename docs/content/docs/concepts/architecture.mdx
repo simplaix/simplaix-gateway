@@ -22,17 +22,21 @@ flowchart TB
             AuthMW[Auth Middleware]
             JWT[JWT Verifier]
             APIKeyAuth[API Key Auth]
+            ART[Runtime Token Auth]
         end
 
         subgraph core [Core Services]
             Policy[Policy Engine]
+            ACL[Provider Access Service]
             Pauser[Request Pauser]
             AgentSvc[Agent Service]
             CredSvc[Credential Service]
             CredProviders[Credential Providers]
+            Aggregation[Tool Aggregation]
         end
 
         subgraph proxy [Proxy Layer]
+            MCPUnified[Unified MCP]
             MCPProxy[MCP Proxy]
             AgentInvoke[Agent Invoke]
             HeaderInjector[Identity + Credential Injector]
@@ -57,14 +61,20 @@ flowchart TB
     end
 
     FE -->|JWT| AuthMW
+    AI -->|art_ token| ART
     AI -->|gk_ + X-Agent-Id| APIKeyAuth
     SDK -->|gk_ API key| APIKeyAuth
 
     AuthMW --> JWT
     APIKeyAuth --> CredSvc
+    ART --> AgentSvc
 
     JWT --> Policy
     APIKeyAuth --> Policy
+    ART --> Policy
+    Policy --> ACL
+    ACL --> Aggregation
+    Aggregation --> MCPUnified
     Policy --> Pauser
     Pauser --> MCPProxy
 
@@ -72,6 +82,7 @@ flowchart TB
     CredSvc --> Encryption
     Encryption --> DB
 
+    MCPUnified --> HeaderInjector
     MCPProxy --> HeaderInjector
     AgentInvoke --> HeaderInjector
     HeaderInjector --> MCP1
@@ -90,26 +101,30 @@ flowchart TB
 
 ### Authentication Layer
 
-The Gateway supports two authentication methods:
+The Gateway supports three authentication methods:
 
 - **JWT** -- for admin operations and agent invocation from frontends
 - **API Keys (`gk_`)** -- for server-to-server communication between agent runtimes and the Gateway
+- **Agent Runtime Tokens (`art_`)** -- runtime identity for registered agents
 
 See [Authentication](/docs/authentication) for details.
 
 ### Core Services
 
-- **Policy Engine** -- evaluates rules to allow, deny, or require confirmation for tool calls
+- **Provider Access Service** -- enforces provider-level ACL and tool-level policy rules from the database
+- **Policy Engine** -- fallback config policy layer (used when DB rules are unavailable)
 - **Request Pauser** -- holds requests pending human confirmation decisions
 - **Agent Service** -- manages agent registration, configuration, and lifecycle
 - **Credential Service** -- encrypted credential storage and runtime resolution
 - **Credential Providers** -- defines how each credential type (OAuth2, API key, JWT, basic) works
+- **Tool Aggregation** -- merges and filters tools across accessible providers for unified MCP
 
 ### Proxy Layer
 
-- **MCP Proxy** -- routes MCP JSON-RPC tool calls to upstream servers with policy enforcement
+- **Unified MCP Endpoint** -- single `/api/v1/mcp/mcp` endpoint that aggregates tools from all authorized providers
+- **MCP Proxy** -- per-provider endpoint (`/api/v1/mcp-proxy/:providerId/mcp`) for direct proxying
 - **Agent Invoke** -- protocol-agnostic agent invocation with credential pre-checking (supports JSON and SSE streaming responses)
-- **Header Injector** -- injects user identity and resolved credentials into upstream requests
+- **Header Injector** -- injects end-user/agent identity and provider auth headers into upstream requests
 
 ### Data Layer
 

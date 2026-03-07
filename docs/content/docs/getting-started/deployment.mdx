@@ -1,0 +1,183 @@
+---
+title: Deployment
+description: Install and run Simplaix Gateway in production.
+---
+
+## Prerequisites
+
+- **Node.js** 22+ (or Docker)
+- **PostgreSQL** 15+ (recommended for production; SQLite is supported for single-node deployments)
+- **pnpm** (if building from source)
+
+---
+
+## Option 1: Docker Compose (Recommended)
+
+The fastest way to get a production-ready Gateway with PostgreSQL.
+
+**1. Clone the repository**
+
+```bash
+git clone https://github.com/simplaix/simplaix-gateway.git
+cd simplaix-gateway
+```
+
+**2. Create your `.env`**
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with production values:
+
+```bash
+JWT_SECRET=<strong-random-secret>          # openssl rand -hex 32
+CREDENTIAL_ENCRYPTION_KEY=<hex-32-bytes>   # openssl rand -hex 32
+ADMIN_EMAIL=admin@yourdomain.com
+ADMIN_PASSWORD=<strong-password>
+POSTGRES_PASSWORD=<db-password>
+GATEWAY_PUBLIC_URL=https://gateway.yourdomain.com
+```
+
+**3. Start**
+
+```bash
+docker compose up -d
+```
+
+The Gateway starts on port `3001` and PostgreSQL on `5432`. The admin user is created automatically on first boot from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+
+---
+
+## Option 2: Build from Source
+
+**1. Install dependencies**
+
+```bash
+git clone https://github.com/simplaix/simplaix-gateway.git
+cd simplaix-gateway
+pnpm install
+```
+
+**2. Build**
+
+```bash
+pnpm build
+```
+
+**3. Configure**
+
+```bash
+cp .env.example .env
+# Edit .env with your production values
+```
+
+**4. Run migrations**
+
+```bash
+pnpm db:migrate
+```
+
+**5. Start**
+
+```bash
+node dist/server.js
+```
+
+---
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string — `postgresql://user:pass@host/db` |
+| `JWT_SECRET` | Yes | Secret for signing/verifying JWTs (min 32 chars) |
+| `CREDENTIAL_ENCRYPTION_KEY` | Yes | 32-byte hex key for encrypting stored credentials |
+| `PORT` | No | HTTP port (default: `3001`) |
+| `JWT_ISSUER` | No | JWT issuer claim (default: `simplaix-gateway`) |
+| `JWT_AUDIENCE` | No | JWT audience claim |
+| `JWT_EXTERNAL_ISSUERS` | No | JSON array of external OIDC/JWT issuers |
+| `ADMIN_EMAIL` | No | Auto-create admin on first boot |
+| `ADMIN_PASSWORD` | No | Password for auto-created admin |
+| `GATEWAY_PUBLIC_URL` | No | Public base URL — used in OAuth callbacks and pairing links |
+| `OAUTH_CALLBACK_BASE_URL` | No | Override OAuth callback base separately from `GATEWAY_PUBLIC_URL` |
+
+### Generating secrets
+
+```bash
+# JWT secret
+openssl rand -hex 32
+
+# Credential encryption key
+openssl rand -hex 32
+```
+
+### External JWT issuers
+
+To accept JWTs from an external identity provider (e.g. Azure AD, Auth0):
+
+```bash
+# Shared secret
+JWT_EXTERNAL_ISSUERS='[{"issuer":"https://auth.example.com","secret":"shared-secret","audience":"simplaix-gateway"}]'
+
+# OIDC / JWKS (Azure AD, etc.)
+JWT_EXTERNAL_ISSUERS='[{"issuer":"https://login.microsoftonline.com/TENANT/v2.0","jwksUri":"https://login.microsoftonline.com/TENANT/discovery/v2.0/keys","audience":"api://simplaix-gateway"}]'
+```
+
+---
+
+## Database
+
+### PostgreSQL (production)
+
+```bash
+DATABASE_URL=postgresql://gateway:password@localhost:5432/gateway
+```
+
+### SQLite (single-node)
+
+```bash
+DATABASE_URL=file:./gateway.db
+```
+
+SQLite requires no setup but does not support horizontal scaling. Use PostgreSQL for any multi-instance deployment.
+
+---
+
+## Create the First Admin
+
+If you did not set `ADMIN_EMAIL` / `ADMIN_PASSWORD`, create an admin manually after the server is running:
+
+```bash
+gateway admin create --email admin@example.com --password changeme --name "Admin"
+```
+
+Or via the API:
+
+```bash
+curl -X POST https://<your-gateway-url>/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"changeme"}'
+```
+
+---
+
+## Verify
+
+```bash
+gateway status
+```
+
+Or check the health endpoint:
+
+```bash
+curl https://<your-gateway-url>/health
+```
+
+## Next Steps
+
+<Cards>
+  <Card title="Configuration" href="/docs/getting-started/configuration" />
+  <Card title="Architecture" href="/docs/concepts/architecture" />
+  <Card title="Authentication" href="/docs/authentication" />
+</Cards>
