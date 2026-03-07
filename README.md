@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/public/simplaix-gateway-logo.png" alt="Simplaix Gateway" width="64" />
+  <img src="docs/public/simplaix-gateway-logo.png" alt="Simplaix Gateway" width="128" />
 </p>
 
 # Agent Gateway by Simplaix
