@@ -1,0 +1,62 @@
+---
+title: Provider Access
+description: ACL and tool-policy rule management for user/agent access to tool providers.
+---
+
+## Endpoint Map
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/admin/provider-access` | JWT + `provider:read` | List rules (with filters) |
+| `GET` | `/api/v1/admin/provider-access/by-provider/:providerId` | JWT + `provider:read` | Grouped rules by pattern |
+| `GET` | `/api/v1/admin/provider-access/:id` | JWT + `provider:read` | Get one rule |
+| `POST` | `/api/v1/admin/provider-access` | JWT + `provider:update` | Create rule |
+| `PUT` | `/api/v1/admin/provider-access/:id` | JWT + `provider:update` | Update rule |
+| `DELETE` | `/api/v1/admin/provider-access/:id` | JWT + `provider:update` | Delete rule |
+| `POST` | `/api/v1/admin/provider-access/evaluate` | JWT + `provider:update` | Dry-run tool policy evaluation |
+| `GET` | `/api/v1/admin/provider-access/agent/:agentId` | JWT + `provider:update` | List agent rules |
+| `PUT` | `/api/v1/admin/provider-access/agent/:agentId` | JWT + `provider:update` | Replace all agent rules atomically |
+
+## Rule Schema
+
+```json
+{
+  "subjectType": "agent",
+  "subjectId": "agt_...",
+  "providerId": "provider_...",
+  "action": "allow",
+  "toolPattern": "slack_read_*",
+  "riskLevel": "low",
+  "description": "Read-only Slack"
+}
+```
+
+- `subjectType`: `user` or `agent`
+- `action`: `allow` `deny` `require_confirmation`
+- `riskLevel`: `low` `medium` `high` `critical`
+- `confirmationMode`: optional `always` or `never`
+
+## Dry-run Evaluate
+
+```bash
+POST /api/v1/admin/provider-access/evaluate
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "userId": "usr_...",
+  "providerId": "slack-provider-id",
+  "toolName": "slack_send_message",
+  "agentId": "agt_..."
+}
+```
+
+```json
+{
+  "action": "require_confirmation",
+  "risk": "high",
+  "matchedRule": {
+    "id": "..."
+  }
+}
+```

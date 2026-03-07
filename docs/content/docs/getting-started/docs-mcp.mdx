@@ -1,0 +1,105 @@
+---
+title: MCP Server
+description: Use the Simplaix Gateway docs as an MCP server inside Claude Code, Cursor, and other AI editors.
+---
+
+The Simplaix Gateway docs expose an **MCP (Model Context Protocol) server** so you can query documentation directly from your AI editor. Ask questions, look up API endpoints, and get accurate answers grounded in the actual docs — without leaving your editor.
+
+## MCP Server
+
+The MCP server is hosted at:
+
+```
+https://docs.simplaix.com/api/mcp
+```
+
+### Available tools
+
+| Tool | Description |
+|------|-------------|
+| `list_docs` | List all documentation pages with titles and descriptions |
+| `search_docs` | Search pages by keyword |
+| `get_page` | Fetch the full content of a page by slug |
+
+---
+
+## Setup
+
+<Tabs items={["Claude Code", "Cursor"]}>
+  <Tab value="Claude Code">
+
+### MCP config
+
+Add the following to `.mcp.json` in the **root of your project**. Claude Code automatically picks up this file.
+
+```json
+{
+  "mcpServers": {
+    "simplaix-gateway-docs": {
+      "type": "http",
+      "url": "https://docs.simplaix.com/api/mcp"
+    }
+  }
+}
+```
+
+To apply globally instead (all projects), add the same block to `~/.claude/settings.json` under `"mcpServers"`.
+
+### Agent skill
+
+Save this as `.claude/agents/gateway-docs.md` in your project to give Claude a dedicated `/gateway-docs` slash command:
+
+````markdown
+---
+name: gateway-docs
+description: Look up Simplaix Gateway documentation. Use this when asked about Gateway concepts, API endpoints, configuration, or integration guides.
+tools:
+  - mcp__simplaix-gateway-docs__list_docs
+  - mcp__simplaix-gateway-docs__search_docs
+  - mcp__simplaix-gateway-docs__get_page
+---
+
+You have access to the Simplaix Gateway documentation via MCP tools.
+
+When the user asks about Gateway concepts, APIs, or how to integrate:
+1. Use `search_docs` to find relevant pages
+2. Use `get_page` to read the full content
+3. Answer based on the actual documentation
+
+Always cite the page title and URL when referencing documentation.
+````
+
+  </Tab>
+  <Tab value="Cursor">
+
+### MCP config
+
+Add the following to `.cursor/mcp.json` in the **root of your project**:
+
+```json
+{
+  "mcpServers": {
+    "simplaix-gateway-docs": {
+      "url": "https://docs.simplaix.com/api/mcp"
+    }
+  }
+}
+```
+
+To apply globally instead, add it to `~/.cursor/mcp.json`.
+
+Once configured, Cursor's Agent mode will call the MCP tools automatically when you ask questions about the Gateway.
+
+  </Tab>
+</Tabs>
+
+---
+
+## Example prompts
+
+Once configured, try asking your AI editor:
+
+- *"How do I authenticate with the Gateway?"*
+- *"What headers does the Gateway inject when forwarding to an agent runtime?"*
+- *"Show me how to set up a credential provider for OAuth2."*
+- *"What's the difference between an API key and a runtime token?"*

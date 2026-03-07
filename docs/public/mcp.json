@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "simplaix-gateway-docs": {
+      "type": "http",
+      "url": "https://docs.simplaix.com/api/mcp"
+    }
+  }
+}

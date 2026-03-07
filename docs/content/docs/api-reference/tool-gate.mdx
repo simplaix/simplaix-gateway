@@ -1,0 +1,54 @@
+---
+title: Tool Gate
+description: Policy-evaluation and audit-report endpoints for non-MCP agent runtimes.
+---
+
+`/api/v1/tool-gate` is useful when your runtime does not proxy MCP directly but still wants gateway policy + confirmation + audit handling.
+
+## Endpoint Map
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/tool-gate/evaluate` | Flexible auth | Evaluate decision (`allow`/`denied`/`confirmed`/`rejected`/`timeout`) |
+| `POST` | `/api/v1/tool-gate/audit` | Flexible auth | Report execution result and complete/update audit record |
+
+## Evaluate
+
+```bash
+POST /api/v1/tool-gate/evaluate
+X-Api-Key: gk_xxx
+X-Agent-Id: agt_...
+X-User-Id: usr_...
+Content-Type: application/json
+
+{
+  "toolName": "stripe_charge",
+  "providerId": "stripe-provider",
+  "params": { "amount": 1200 }
+}
+```
+
+Possible responses:
+
+- `{ "decision": "allow", "risk": "low", "auditId": "..." }`
+- `{ "decision": "denied", "risk": "high", "auditId": "..." }`
+- `{ "decision": "confirmed", "confirmedBy": "usr_...", "auditId": "..." }`
+- `{ "decision": "rejected", "reason": "...", "auditId": "..." }`
+- `{ "decision": "timeout", "reason": "Request timed out", "auditId": "..." }`
+
+## Audit
+
+```bash
+POST /api/v1/tool-gate/audit
+X-Api-Key: gk_xxx
+X-User-Id: usr_...
+Content-Type: application/json
+
+{
+  "auditId": "...",
+  "result": { "ok": true },
+  "durationMs": 240
+}
+```
+
+If `auditId` is omitted, `toolName` and `providerId` are required and a new audit record is created.

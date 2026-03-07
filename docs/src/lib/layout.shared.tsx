@@ -1,10 +1,16 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 import { FaGithub } from 'react-icons/fa';
+import Image from 'next/image';
 
 export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
-      title: 'Simplaix Gateway',
+      title: (
+        <>
+          <Image src="/logo.png" alt="Simplaix" width={32} height={32} className="rounded-sm" />
+          <span className="text-base font-semibold">Simplaix Gateway</span>
+        </>
+      ),
     },
     links: [
       {
