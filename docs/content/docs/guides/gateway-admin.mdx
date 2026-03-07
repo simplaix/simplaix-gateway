@@ -1,0 +1,740 @@
+---
+title: Gateway Admin
+description: Deploy, configure, and manage a Simplaix Gateway instance.
+---
+
+This guide is for **platform administrators** who deploy and operate a Simplaix Gateway instance. You'll learn how to configure authentication, manage users, set up tool providers, define policies, control access, and monitor the system.
+
+## Overview
+
+As a Gateway Admin, you are responsible for:
+
+1. **Deploying** the Gateway (local, Vercel, or custom infrastructure)
+2. **Configuring** authentication, database, encryption, and external identity providers
+3. **Managing users** and roles
+4. **Registering tool providers** and configuring access control
+5. **Defining policies** for tool-call governance
+6. **Setting up credential providers** for the credential vault
+7. **Monitoring** via audit logs and health checks
+
+## Quick Start
+
+### Step 1: Install and Configure
+
+```bash
+# Clone the repository
+git clone https://github.com/simplaix/simplaix-gateway.git
+cd simplaix-gateway
+
+# Install dependencies
+pnpm install
+
+# Copy environment template
+cp .env.example .env
+```
+
+Edit `.env` with your settings:
+
+```bash
+# ===== JWT Configuration =====
+JWT_SECRET=generate-a-strong-random-secret-here
+JWT_ISSUER=simplaix-gateway
+JWT_EXPIRES_IN=24h
+
+# ===== Initial Admin User =====
+ADMIN_EMAIL=admin@yourcompany.com
+ADMIN_PASSWORD=a-strong-admin-password
+
+# ===== Database =====
+# SQLite (default, zero setup — uses absolute path so all commands share one DB)
+DATABASE_URL=file:~/.simplaix-gateway/data/gateway.db
+# PostgreSQL: DATABASE_URL=postgres://user:pass@host/db
+
+# ===== Credential Encryption =====
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+CREDENTIAL_ENCRYPTION_KEY=your-64-character-hex-string
+
+# ===== Default MCP Server =====
+MCP_SERVER_URL=http://localhost:8080
+```
+
+### Step 2: Start the Gateway
+
+```bash
+# Development mode
+pnpm dev
+
+# The Gateway starts on http://localhost:3001
+```
+
+### Step 3: Verify
+
+```bash
+# Health check
+curl http://localhost:3001/api/health
+
+# Login as admin
+curl -X POST http://localhost:3001/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@yourcompany.com", "password": "a-strong-admin-password"}'
+```
+
+### Step 4: Start the Dashboard (optional)
+
+```bash
+cd gateway-app
+pnpm install
+pnpm dev
+# Dashboard available at http://localhost:3000
+```
+
+## Configuration Reference
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `JWT_SECRET` | Yes | - | Secret for signing gateway JWTs (HMAC) |
+| `JWT_PUBLIC_KEY` | No | - | PEM public key for asymmetric JWT (RSA/EC) |
+| `JWT_ISSUER` | No | `simplaix-gateway` | JWT issuer claim |
+| `JWT_AUDIENCE` | No | - | JWT audience claim |
+| `JWT_EXPIRES_IN` | No | `24h` | Token expiration (`1h`, `7d`, etc.) |
+| `JWT_EXTERNAL_ISSUERS` | No | - | JSON array of external IdP configs |
+| `ADMIN_EMAIL` | No | - | Initial admin email (created on first boot) |
+| `ADMIN_PASSWORD` | No | - | Initial admin password |
+| `DATABASE_URL` | No | `file:~/.simplaix-gateway/data/gateway.db` | SQLite `file:` path or PostgreSQL `postgres://` URL |
+| `CREDENTIAL_ENCRYPTION_KEY` | No | - | 64-char hex key for AES-256-GCM |
+| `MCP_SERVER_URL` | No | `http://localhost:8080` | Default MCP server URL |
+| `OAUTH_CALLBACK_BASE_URL` | No | - | Base URL for OAuth callbacks |
+
+### External Identity Providers
+
+To accept JWTs from external IdPs (Auth0, Azure AD, Okta, etc.):
+
+```bash
+JWT_EXTERNAL_ISSUERS='[
+  {
+    "issuer": "https://your-tenant.auth0.com/",
+    "jwksUri": "https://your-tenant.auth0.com/.well-known/jwks.json",
+    "audience": "simplaix-gateway"
+  },
+  {
+    "issuer": "https://login.microsoftonline.com/TENANT_ID/v2.0",
+    "jwksUri": "https://login.microsoftonline.com/TENANT_ID/discovery/v2.0/keys",
+    "audience": "api://simplaix-gateway"
+  }
+]'
+```
+
+Each issuer config supports:
+
+| Field | Description |
+|-------|-------------|
+| `issuer` | JWT `iss` claim to match |
+| `secret` | Shared secret for HMAC (HS256) validation |
+| `jwksUri` | JWKS endpoint URL for RSA/EC validation |
+| `audience` | Expected `aud` claim |
+
+### Database
+
+**SQLite** (development, single-instance):
+
+```bash
+DATABASE_URL=file:~/.simplaix-gateway/data/gateway.db
+```
+
+**PostgreSQL** (production, multi-instance):
+
+```bash
+DATABASE_URL=postgres://user:password@host:5432/gateway
+```
+
+Run migrations:
+
+```bash
+pnpm db:generate
+pnpm db:migrate
+```
+
+## User Management
+
+### Roles
+
+The Gateway has three built-in roles:
+
+| Role | Permissions |
+|------|-------------|
+| `admin` | Full access: manage users, agents, providers, view all audit logs |
+| `tenant_admin` | Manage agents and providers within own tenant, view tenant audit logs |
+| `agent_creator` | Create and manage own agents, view own audit logs |
+
+### Create Users
+
+```bash
+# Create a user (admin only)
+curl -X POST http://localhost:3001/api/v1/admin/users \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "creator@company.com",
+    "password": "securepass123",
+    "name": "Agent Developer",
+    "tenantId": "tenant-acme",
+    "roles": ["agent_creator"]
+  }'
+```
+
+### Manage Roles
+
+```bash
+# Assign a role
+curl -X POST http://localhost:3001/api/v1/admin/users/<user-id>/roles \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "tenant_admin"}'
+
+# Remove a role
+curl -X DELETE http://localhost:3001/api/v1/admin/users/<user-id>/roles/tenant_admin \
+  -H "Authorization: Bearer <admin-jwt>"
+```
+
+### List Users
+
+```bash
+curl http://localhost:3001/api/v1/admin/users \
+  -H "Authorization: Bearer <admin-jwt>"
+```
+
+## API Key Management
+
+API Keys (`gk_` prefix) provide server-to-server trust for agent runtimes calling back into the Gateway.
+
+### Create an API Key
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/api-keys \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production Agent Server",
+    "scopes": ["credentials:resolve", "credentials:read"]
+  }'
+# Response: { "key": "gk_xxxxxxxxxxx...", ... }
+# ⚠️  The key is shown only once!
+```
+
+### Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `credentials:resolve` | Resolve user credentials (default) |
+| `credentials:read` | Read credential metadata |
+| `credentials:write` | Store/update credentials on behalf of users |
+
+### List and Revoke
+
+```bash
+# List keys
+curl http://localhost:3001/api/v1/admin/api-keys \
+  -H "Authorization: Bearer <admin-jwt>"
+
+# Revoke a key
+curl -X DELETE http://localhost:3001/api/v1/admin/api-keys/<key-id> \
+  -H "Authorization: Bearer <admin-jwt>"
+```
+
+## Tool Provider Management
+
+Tool Providers map tool name patterns to upstream MCP server endpoints. They control where tool calls are routed.
+
+### Create a Tool Provider
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/tool-providers \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Slack Integration",
+    "pattern": "slack_*",
+    "endpoint": "http://slack-mcp-server:3000",
+    "authType": "bearer",
+    "authSecret": "upstream-mcp-secret",
+    "priority": 10,
+    "description": "Routes slack_* tool calls to the Slack MCP server"
+  }'
+```
+
+### Pattern Matching
+
+Tool providers use glob patterns to match tool names:
+
+| Pattern | Matches |
+|---------|---------|
+| `slack_*` | `slack_send_message`, `slack_list_channels` |
+| `github_*` | `github_create_issue`, `github_list_repos` |
+| `*` | All tools (catch-all, use with low priority) |
+
+Higher `priority` values match first.
+
+### Authentication Types
+
+| Auth Type | Description |
+|-----------|-------------|
+| `none` | No authentication to upstream |
+| `bearer` | `Authorization: Bearer <authSecret>` |
+| `api_key` | `X-API-Key: <authSecret>` |
+
+### CRUD Operations
+
+```bash
+# List providers
+GET /api/v1/admin/tool-providers
+
+# Get a specific provider
+GET /api/v1/admin/tool-providers/:id
+
+# Update a provider
+PUT /api/v1/admin/tool-providers/:id
+
+# Delete a provider
+DELETE /api/v1/admin/tool-providers/:id
+```
+
+## Provider Access Control (ACL)
+
+ACL rules control which users and roles can access which tool providers through the MCP Proxy.
+
+### Create Access Rules
+
+```bash
+# Allow a specific user to access a provider
+curl -X POST http://localhost:3001/api/v1/admin/provider-access \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subjectType": "user",
+    "subjectId": "user-123",
+    "providerId": "slack-provider-id",
+    "action": "allow"
+  }'
+
+# Allow an agent to access all providers
+curl -X POST http://localhost:3001/api/v1/admin/provider-access \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subjectType": "agent",
+    "subjectId": "agent-abc123",
+    "providerId": "*",
+    "action": "allow"
+  }'
+
+# Deny a specific user from a sensitive provider
+curl -X POST http://localhost:3001/api/v1/admin/provider-access \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subjectType": "user",
+    "subjectId": "user-456",
+    "providerId": "finance-provider-id",
+    "action": "deny"
+  }'
+```
+
+### Subject Types
+
+| Type | Description | `subjectId` example |
+|------|-------------|---------------------|
+| `user` | Specific user | User ID (`usr_abc123`) |
+| `agent` | A registered agent | Agent ID (`agent-abc123`) |
+
+### Evaluation Order
+
+1. **User-level deny** rules are checked first
+2. **User-level allow** rules are checked next
+3. **Agent-level deny** rules
+4. **Agent-level allow** rules
+5. **Wildcard** provider rules (deny, then allow)
+6. If no rules match, access is **denied by default** (whitelist model)
+
+### List and Delete Rules
+
+```bash
+# List all rules
+GET /api/v1/admin/provider-access
+
+# Get a specific rule
+GET /api/v1/admin/provider-access/:id
+
+# Delete a rule
+DELETE /api/v1/admin/provider-access/:id
+```
+
+## Policy Engine
+
+Policies control what happens when a tool is called. They are configured in `src/config.ts`.
+
+### Default Policies
+
+```typescript
+const policies = [
+  { tool: 'transfer_money', action: 'require_confirmation', risk: 'high' },
+  { tool: 'delete_*',       action: 'require_confirmation', risk: 'critical' },
+  { tool: 'write_*',        action: 'require_confirmation', risk: 'medium' },
+  { tool: 'read_*',         action: 'allow',               risk: 'low' },
+  { tool: '*',              action: 'allow',               risk: 'low' },
+];
+```
+
+### Policy Actions
+
+| Action | Behavior |
+|--------|----------|
+| `allow` | Proceeds immediately |
+| `deny` | Blocked with 403 Forbidden |
+| `require_confirmation` | Pauses until a human confirms via SSE |
+
+### Risk Levels
+
+| Level | Description |
+|-------|-------------|
+| `low` | Read-only operations |
+| `medium` | Write operations |
+| `high` | Financial or sensitive operations |
+| `critical` | Destructive operations (delete, etc.) |
+
+## Credential Provider Setup
+
+Credential Providers define how each external service credential type works.
+
+### Create a Credential Provider
+
+**JWT-based (e.g., Gateway API access):**
+
+```bash
+curl -X POST http://localhost:3001/api/v1/credential-providers \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Gateway API",
+    "serviceType": "gateway_api",
+    "authType": "jwt",
+    "description": "Access to Gateway management APIs",
+    "config": {
+      "connectUrl": "/auth/connect?service=gateway_api",
+      "jwt": {
+        "headerName": "Authorization",
+        "prefix": "Bearer "
+      }
+    }
+  }'
+```
+
+**API Key-based (e.g., Stripe):**
+
+```bash
+curl -X POST http://localhost:3001/api/v1/credential-providers \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Stripe",
+    "serviceType": "stripe_api",
+    "authType": "api_key",
+    "description": "Stripe payment API access",
+    "config": {
+      "connectUrl": "/auth/connect?service=stripe_api",
+      "apiKey": {
+        "headerName": "Authorization",
+        "prefix": "Bearer "
+      }
+    }
+  }'
+```
+
+**OAuth2 (e.g., Google):**
+
+```bash
+curl -X POST http://localhost:3001/api/v1/credential-providers \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Google",
+    "serviceType": "google",
+    "authType": "oauth2",
+    "description": "Google API access",
+    "config": {
+      "oauth2": {
+        "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+        "tokenUrl": "https://oauth2.googleapis.com/token",
+        "clientId": "your-client-id",
+        "clientSecret": "your-client-secret",
+        "defaultScopes": ["openid", "email", "https://www.googleapis.com/auth/calendar"]
+      }
+    }
+  }'
+```
+
+### Supported Auth Types
+
+| Type | Use Case | Config Section |
+|------|----------|---------------|
+| `jwt` | Service tokens, API JWTs | `config.jwt` |
+| `api_key` | API keys (Stripe, OpenAI, etc.) | `config.apiKey` |
+| `oauth2` | OAuth2 providers (Google, Slack, etc.) | `config.oauth2` |
+| `basic` | Username/password credentials | `config.basic` |
+
+## Agent Management
+
+### Register an Agent
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/agents \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Customer Support Agent",
+    "upstreamUrl": "http://support-agent:8000",
+    "description": "Handles customer inquiries",
+    "requiredCredentials": [
+      { "serviceType": "zendesk", "description": "Zendesk API access" }
+    ],
+    "tenantId": "tenant-acme"
+  }'
+```
+
+### Kill Switch
+
+Instantly disable an agent without deleting it:
+
+```bash
+# Disable -- all invocations return 403
+curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/disable \
+  -H "Authorization: Bearer <admin-jwt>"
+
+# Re-enable
+curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/enable \
+  -H "Authorization: Bearer <admin-jwt>"
+```
+
+### Regenerate Runtime Token
+
+If an agent's runtime token is compromised:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/regenerate-token \
+  -H "Authorization: Bearer <admin-jwt>"
+# Returns new runtime_token (old one is immediately invalidated)
+```
+
+## Multi-Tenancy
+
+The Gateway supports tenant isolation across all resources:
+
+- **Agents** are scoped to a `tenantId`
+- **Users** belong to a tenant
+- **Credentials** are isolated per user and tenant
+- **Tool Providers** can be global or tenant-scoped
+- **ACL rules** are tenant-aware
+
+Users in different tenants cannot see or access each other's agents and credentials.
+
+### Setting Up Tenants
+
+1. Create users with tenant IDs:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/users \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "dev@acme.com",
+    "password": "password123",
+    "tenantId": "tenant-acme",
+    "roles": ["agent_creator"]
+  }'
+```
+
+2. Agents created by tenant users inherit the tenant:
+
+```bash
+# When dev@acme.com creates an agent, it gets tenantId: "tenant-acme"
+# Users from other tenants cannot see or invoke it
+```
+
+## Monitoring and Audit
+
+### Audit Logs
+
+Query all tool calls with full context:
+
+```bash
+# Get recent logs
+curl "http://localhost:3001/api/v1/audit/logs?limit=50" \
+  -H "Authorization: Bearer <admin-jwt>"
+
+# Filter by agent
+curl "http://localhost:3001/api/v1/audit/logs?agent_id=abc123" \
+  -H "Authorization: Bearer <admin-jwt>"
+
+# Filter by status
+curl "http://localhost:3001/api/v1/audit/logs?status=failed" \
+  -H "Authorization: Bearer <admin-jwt>"
+
+# Filter by tool name
+curl "http://localhost:3001/api/v1/audit/logs?tool_name=transfer_money" \
+  -H "Authorization: Bearer <admin-jwt>"
+```
+
+Each audit log entry contains:
+
+| Field | Description |
+|-------|-------------|
+| `userId` | Who authenticated the request |
+| `agentId` | Which agent made the call |
+| `endUserId` | The human end-user |
+| `providerId` | Which tool provider handled it |
+| `toolName` | The tool that was called |
+| `arguments` | Tool call arguments (JSON) |
+| `result` | Tool call result (JSON) |
+| `status` | `pending`, `completed`, `failed`, `confirmed`, `rejected` |
+| `duration` | Execution time in milliseconds |
+
+### Audit Statistics
+
+```bash
+curl http://localhost:3001/api/v1/audit/stats \
+  -H "Authorization: Bearer <admin-jwt>"
+```
+
+### Health Check
+
+```bash
+curl http://localhost:3001/api/health
+# Response:
+# {
+#   "status": "healthy",
+#   "services": { "gateway": "healthy", "mcp": "healthy" },
+#   "metrics": { "pendingConfirmations": 0, "mcpLatency": 45 }
+# }
+```
+
+## Dashboard (gateway-app)
+
+The Gateway includes an optional Next.js dashboard with an AI assistant powered by CopilotKit + Strands/AG-UI.
+
+### Starting the Dashboard
+
+```bash
+cd gateway-app
+pnpm install
+pnpm dev
+# Open http://localhost:3000
+```
+
+### Starting the AI Agent
+
+```bash
+cd gateway-app/agent
+pip install -r requirements.txt   # or: uv sync
+uv run main.py
+# Agent runs on http://localhost:8000
+```
+
+The dashboard provides:
+- **Agent management** -- create, update, delete, enable/disable agents
+- **Tool provider management** -- configure MCP server routing
+- **Confirmation management** -- review and respond to pending confirmations
+- **Audit log viewer** -- search and filter tool call history
+- **AI chat assistant** -- manage the Gateway via natural language
+
+## Deployment
+
+### Vercel
+
+The Gateway is built with Hono and configured for Vercel deployment:
+
+```bash
+# Build and deploy
+pnpm build
+pnpm deploy
+
+# Or use Vercel CLI
+vc deploy
+```
+
+Set environment variables in the Vercel dashboard. Use PostgreSQL for production (`DATABASE_URL=postgres://...`).
+
+### Docker (Custom)
+
+Create a `Dockerfile`:
+
+```dockerfile
+FROM node:20-slim
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN npm install -g pnpm && pnpm install --frozen-lockfile
+COPY . .
+EXPOSE 3001
+CMD ["pnpm", "dev"]
+```
+
+### Production Checklist
+
+- [ ] Set a strong `JWT_SECRET` (or use asymmetric keys with `JWT_PUBLIC_KEY`)
+- [ ] Generate a random `CREDENTIAL_ENCRYPTION_KEY` (64-char hex)
+- [ ] Use PostgreSQL for production (`DATABASE_URL=postgres://...`)
+- [ ] Change the default admin password
+- [ ] Configure CORS origins (update `cors()` in `src/index.ts`)
+- [ ] Set up external IdP for user authentication (`JWT_EXTERNAL_ISSUERS`)
+- [ ] Configure audit log retention policy
+- [ ] Set up monitoring for the `/api/health` endpoint
+- [ ] Enable HTTPS (via reverse proxy or platform)
+
+## Admin API Reference
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| **Users** | | |
+| `/api/v1/admin/users` | GET | List users |
+| `/api/v1/admin/users` | POST | Create user |
+| `/api/v1/admin/users/:id` | GET | Get user |
+| `/api/v1/admin/users/:id` | PUT | Update user |
+| `/api/v1/admin/users/:id` | DELETE | Delete user |
+| `/api/v1/admin/users/:id/roles` | POST | Assign role |
+| `/api/v1/admin/users/:id/roles/:role` | DELETE | Remove role |
+| **Agents** | | |
+| `/api/v1/admin/agents` | GET | List agents |
+| `/api/v1/admin/agents` | POST | Register agent |
+| `/api/v1/admin/agents/:id` | GET | Get agent |
+| `/api/v1/admin/agents/:id` | PUT | Update agent |
+| `/api/v1/admin/agents/:id` | DELETE | Delete agent |
+| `/api/v1/admin/agents/:id/disable` | POST | Kill switch |
+| `/api/v1/admin/agents/:id/enable` | POST | Re-enable |
+| `/api/v1/admin/agents/:id/regenerate-token` | POST | New runtime token |
+| **API Keys** | | |
+| `/api/v1/admin/api-keys` | GET | List keys |
+| `/api/v1/admin/api-keys` | POST | Create key |
+| `/api/v1/admin/api-keys/:id` | DELETE | Revoke key |
+| **Tool Providers** | | |
+| `/api/v1/admin/tool-providers` | GET | List providers |
+| `/api/v1/admin/tool-providers` | POST | Create provider |
+| `/api/v1/admin/tool-providers/:id` | GET | Get provider |
+| `/api/v1/admin/tool-providers/:id` | PUT | Update provider |
+| `/api/v1/admin/tool-providers/:id` | DELETE | Delete provider |
+| **Provider Access** | | |
+| `/api/v1/admin/provider-access` | GET | List ACL rules |
+| `/api/v1/admin/provider-access` | POST | Create rule |
+| `/api/v1/admin/provider-access/:id` | GET | Get rule |
+| `/api/v1/admin/provider-access/:id` | DELETE | Delete rule |
+| **Credential Providers** | | |
+| `/api/v1/credential-providers` | GET | List providers |
+| `/api/v1/credential-providers` | POST | Create provider |
+| `/api/v1/credential-providers/:id` | GET | Get provider |
+| `/api/v1/credential-providers/:id` | PUT | Update provider |
+| `/api/v1/credential-providers/:id` | DELETE | Delete provider |
+| **Audit** | | |
+| `/api/v1/audit/logs` | GET | Query logs |
+| `/api/v1/audit/logs/:id` | GET | Get log |
+| `/api/v1/audit/stats` | GET | Statistics |
+| **Health** | | |
+| `/api/health` | GET | Health check |

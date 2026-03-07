@@ -1,0 +1,52 @@
+---
+title: Policy Engine
+description: Configurable rules for controlling tool access with allow, deny, and confirmation actions.
+---
+
+The policy engine evaluates rules to determine whether a tool call should be allowed, denied, or require human confirmation.
+
+## Configuration
+
+Policies are configured in `src/config.ts`:
+
+```typescript
+const policies = [
+  { tool: 'transfer_money', action: 'require_confirmation', risk: 'high' },
+  { tool: 'delete_*',       action: 'require_confirmation', risk: 'critical' },
+  { tool: 'read_*',         action: 'allow',               risk: 'low' },
+];
+```
+
+Tool names support wildcard matching with `*`.
+
+## Actions
+
+| Action | Behavior |
+|--------|----------|
+| `allow` | Request proceeds immediately |
+| `deny` | Request is blocked with 403 Forbidden |
+| `require_confirmation` | Request is paused until a human confirms via SSE |
+
+## Risk Levels
+
+| Risk Level | Description |
+|------------|-------------|
+| `low` | Read-only operations |
+| `medium` | Write operations |
+| `high` | Financial or sensitive operations |
+| `critical` | Destructive operations |
+
+## How It Works
+
+When an MCP tool call arrives at the Gateway:
+
+1. The **auth middleware** authenticates the request (JWT or API key)
+2. The **policy engine** matches the tool name against configured rules
+3. Based on the matched policy action:
+   - `allow`: The request is forwarded to the upstream server
+   - `deny`: A 403 response is returned immediately
+   - `require_confirmation`: The request is paused and a confirmation notification is sent via SSE
+4. After confirmation (or rejection), the request is either forwarded or denied
+5. The **audit service** logs the result
+
+See [Confirmations](/docs/concepts/confirmations) for details on the human-in-the-loop confirmation flow.

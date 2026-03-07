@@ -1,0 +1,12 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "getting-started",
+    "guides",
+    "concepts",
+    "authentication",
+    "api-reference",
+    "sdks"
+  ]
+}

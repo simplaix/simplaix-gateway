@@ -1,0 +1,9 @@
+{
+  "title": "Guides",
+  "defaultOpen": true,
+  "pages": [
+    "agent-creator",
+    "app-builder",
+    "gateway-admin"
+  ]
+}

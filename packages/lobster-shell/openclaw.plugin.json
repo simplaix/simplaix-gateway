@@ -1,0 +1,60 @@
+{
+  "id": "lobster-shell",
+  "name": "Simplaix Gateway",
+  "description": "Tool policy evaluation and audit logging via Simplaix Gateway",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "gatewayUrl": {
+        "type": "string"
+      },
+      "providerId": {
+        "type": "string",
+        "default": "lobster-shell"
+      },
+      "timeoutMs": {
+        "type": "number",
+        "minimum": 1000,
+        "maximum": 600000
+      },
+      "skipTools": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "gatewayRoot": {
+        "type": "string"
+      }
+    },
+    "required": [
+    ]
+  },
+  "uiHints": {
+    "gatewayUrl": {
+      "label": "Gateway URL",
+      "help": "Simplaix Gateway base URL (e.g. https://gateway.example.com)",
+      "placeholder": "https://gateway.example.com"
+    },
+    "providerId": {
+      "label": "Provider ID",
+      "help": "Provider ID for policy evaluation (default: lobster-shell)"
+    },
+    "timeoutMs": {
+      "label": "Timeout (ms)",
+      "help": "HTTP timeout for evaluate endpoint (default: 310000)"
+    },
+    "skipTools": {
+      "label": "Skip Tools",
+      "help": "Tool names to skip policy evaluation"
+    },
+    "gatewayRoot": {
+      "label": "Gateway Root",
+      "help": "Local filesystem path of simplaix/agent-gateway repo (used by /lobster-shell start)"
+    }
+  },
+  "skills": [
+    "./skills"
+  ]
+}

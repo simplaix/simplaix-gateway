@@ -1,0 +1,39 @@
+---
+title: Overview
+description: Get up and running with Simplaix Gateway in minutes.
+---
+
+This guide will help you get Simplaix Gateway running locally. The Gateway is a Hono-based server that provides identity, security, credential management, and policy enforcement for AI agents. It supports multiple agent protocols including MCP, CopilotKit, AG-UI/Strands, and any HTTP-based agent runtime.
+
+## Prerequisites
+
+- **Node.js** 18+
+- **pnpm** package manager
+- **Python 3.12+** (optional, for the agent runtime)
+
+## Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/simplaix/simplaix-gateway.git
+cd simplaix-gateway
+
+# Install dependencies
+pnpm install
+
+# Copy environment template
+cp .env.example .env
+
+# Start the Gateway server
+pnpm dev
+```
+
+The Gateway will start on `http://localhost:3001`.
+
+## Next Steps
+
+<Cards>
+  <Card title="Installation" href="/docs/getting-started/installation" />
+  <Card title="Configuration" href="/docs/getting-started/configuration" />
+  <Card title="Architecture" href="/docs/concepts/architecture" />
+</Cards>

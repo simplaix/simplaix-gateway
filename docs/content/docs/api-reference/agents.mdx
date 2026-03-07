@@ -1,0 +1,121 @@
+---
+title: Agents
+description: CRUD operations for managing agents, including invocation and credential pre-checks.
+---
+
+All agent management endpoints require JWT authentication.
+
+## Register Agent
+
+```bash
+POST /api/v1/admin/agents
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "name": "Finance Bot",
+  "upstreamUrl": "https://finance-agent.internal/mcp",
+  "requiredCredentials": [{ "serviceType": "gateway_api" }],
+  "description": "Handles financial queries"
+}
+```
+
+**Response** `201 Created`
+
+```json
+{
+  "id": "agt_...",
+  "name": "Finance Bot",
+  "upstreamUrl": "https://finance-agent.internal/mcp",
+  "isActive": true,
+  "requiredCredentials": [{ "serviceType": "gateway_api" }],
+  "description": "Handles financial queries",
+  "tenantId": "tnt_...",
+  "createdAt": "2025-01-01T00:00:00.000Z"
+}
+```
+
+## List Agents
+
+```bash
+GET /api/v1/admin/agents
+Authorization: Bearer <jwt>
+```
+
+## Get Agent
+
+```bash
+GET /api/v1/admin/agents/:id
+Authorization: Bearer <jwt>
+```
+
+## Update Agent
+
+```bash
+PUT /api/v1/admin/agents/:id
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "name": "Updated Finance Bot",
+  "upstreamUrl": "https://new-finance-agent.internal/mcp"
+}
+```
+
+## Delete Agent
+
+```bash
+DELETE /api/v1/admin/agents/:id
+Authorization: Bearer <jwt>
+```
+
+## Disable Agent (Kill Switch)
+
+```bash
+POST /api/v1/admin/agents/:id/disable
+Authorization: Bearer <jwt>
+```
+
+## Enable Agent
+
+```bash
+POST /api/v1/admin/agents/:id/enable
+Authorization: Bearer <jwt>
+```
+
+## Invoke Agent
+
+Invoke an agent from the frontend. This endpoint is protocol-agnostic -- it forwards the request to the agent's `upstreamUrl` and supports both JSON and SSE streaming responses. The upstream can be any HTTP-based agent runtime (MCP server, CopilotKit agent, Strands/AG-UI agent, or custom service). The Gateway performs credential pre-checks and injects user identity and resolved credentials as headers before forwarding.
+
+```bash
+POST /api/v1/agents/:agentId/invoke
+Authorization: Bearer <user-jwt>
+Content-Type: application/json
+
+{
+  "message": "Show me all agents"
+}
+```
+
+If required credentials are missing, the response includes auth URLs:
+
+```json
+{
+  "status": "CREDENTIALS_REQUIRED",
+  "missingCredentials": [
+    {
+      "serviceType": "gateway_api",
+      "connectUrl": "/auth/connect?service=gateway_api"
+    }
+  ]
+}
+```
+
+## Pre-check Credentials
+
+Check credential availability without invoking the agent.
+
+```bash
+GET /api/v1/agents/:agentId/credentials-check
+Authorization: Bearer <user-jwt>
+```

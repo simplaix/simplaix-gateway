@@ -1,0 +1,122 @@
+---
+title: System Architecture
+description: Overview of the Simplaix Gateway architecture and how its components interact.
+---
+
+The Simplaix Gateway sits between client applications and upstream agent runtimes, providing a unified security, identity, and credential management layer. It is protocol-agnostic -- the same Gateway can route to MCP servers, CopilotKit agents, Strands/AG-UI agents, or any custom HTTP service.
+
+## Architecture Diagram
+
+```mermaid
+flowchart TB
+    subgraph clients [Clients]
+        FE[Dashboard / CopilotKit]
+        AI[AI Agent Runtime]
+        SDK[Credential SDK]
+    end
+
+    subgraph gateway [Simplaix Gateway]
+        direction TB
+
+        subgraph auth [Authentication Layer]
+            AuthMW[Auth Middleware]
+            JWT[JWT Verifier]
+            APIKeyAuth[API Key Auth]
+        end
+
+        subgraph core [Core Services]
+            Policy[Policy Engine]
+            Pauser[Request Pauser]
+            AgentSvc[Agent Service]
+            CredSvc[Credential Service]
+            CredProviders[Credential Providers]
+        end
+
+        subgraph proxy [Proxy Layer]
+            MCPProxy[MCP Proxy]
+            AgentInvoke[Agent Invoke]
+            HeaderInjector[Identity + Credential Injector]
+        end
+
+        subgraph data [Data Layer]
+            AuditSvc[Audit Service]
+            Encryption[AES-256-GCM Encryption]
+            DB[(SQLite / PostgreSQL)]
+        end
+
+        subgraph realtime [Real-time]
+            SSE[SSE Stream]
+        end
+    end
+
+    subgraph upstreams [Upstream Agent Runtimes]
+        MCP1[MCP Server]
+        CK[CopilotKit Agent]
+        Strands[Strands / AG-UI Agent]
+        Custom[Custom HTTP Agent]
+    end
+
+    FE -->|JWT| AuthMW
+    AI -->|gk_ + X-Agent-Id| APIKeyAuth
+    SDK -->|gk_ API key| APIKeyAuth
+
+    AuthMW --> JWT
+    APIKeyAuth --> CredSvc
+
+    JWT --> Policy
+    APIKeyAuth --> Policy
+    Policy --> Pauser
+    Pauser --> MCPProxy
+
+    AgentInvoke --> CredSvc
+    CredSvc --> Encryption
+    Encryption --> DB
+
+    MCPProxy --> HeaderInjector
+    AgentInvoke --> HeaderInjector
+    HeaderInjector --> MCP1
+    HeaderInjector --> CK
+    HeaderInjector --> Strands
+    HeaderInjector --> Custom
+
+    AgentSvc --> DB
+    AuditSvc --> DB
+    CredProviders --> DB
+
+    SSE --> FE
+```
+
+## Layers
+
+### Authentication Layer
+
+The Gateway supports two authentication methods:
+
+- **JWT** -- for admin operations and agent invocation from frontends
+- **API Keys (`gk_`)** -- for server-to-server communication between agent runtimes and the Gateway
+
+See [Authentication](/docs/authentication) for details.
+
+### Core Services
+
+- **Policy Engine** -- evaluates rules to allow, deny, or require confirmation for tool calls
+- **Request Pauser** -- holds requests pending human confirmation decisions
+- **Agent Service** -- manages agent registration, configuration, and lifecycle
+- **Credential Service** -- encrypted credential storage and runtime resolution
+- **Credential Providers** -- defines how each credential type (OAuth2, API key, JWT, basic) works
+
+### Proxy Layer
+
+- **MCP Proxy** -- routes MCP JSON-RPC tool calls to upstream servers with policy enforcement
+- **Agent Invoke** -- protocol-agnostic agent invocation with credential pre-checking (supports JSON and SSE streaming responses)
+- **Header Injector** -- injects user identity and resolved credentials into upstream requests
+
+### Data Layer
+
+- **Audit Service** -- logs every tool call with full context and timing
+- **AES-256-GCM Encryption** -- encrypts all credentials at rest
+- **SQLite / PostgreSQL** -- pluggable database backend via Drizzle ORM
+
+### Real-time
+
+- **SSE Stream** -- server-sent events for real-time confirmation notifications

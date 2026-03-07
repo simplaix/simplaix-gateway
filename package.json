@@ -1,0 +1,73 @@
+{
+  "name": "@simplaix/simplaix-gateway",
+  "version": "0.1.14",
+  "description": "Open-source Agent Gateway — identity, credentials, policy enforcement, and observability for AI agents",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "agent",
+    "gateway",
+    "simplaix",
+    "agent-gateway",
+    "ai",
+    "llm"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/simplaix/simplaix-gateway.git"
+  },
+  "homepage": "https://github.com/simplaix/simplaix-gateway#readme",
+  "bin": {
+    "simplaix-gateway": "./dist/cli/index.js",
+    "gateway": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "dev": "vc dev",
+    "dev:server": "tsx watch --env-file=.env src/server.ts",
+    "dev:cli": "tsx src/cli/index.ts",
+    "build": "vc build",
+    "build:cli": "tsc -p tsconfig.cli.json && chmod +x dist/cli/index.js",
+    "build:dashboard": "pnpm --filter simplaix-gateway-app build && node scripts/bundle-dashboard.mjs",
+    "prepublishOnly": "pnpm build:cli && pnpm build:dashboard",
+    "deploy": "vc deploy",
+    "typecheck:gateway": "tsc -p tsconfig.gateway.json --noEmit",
+    "test:gateway": "tsx --test test/**/*.test.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:generate:pg": "drizzle-kit generate",
+    "db:generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts",
+    "db:migrate": "drizzle-kit migrate",
+    "db:migrate:pg": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@hono/mcp": "0.2.3",
+    "@hono/node-server": "^1.19.9",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.6.2",
+    "cloudflared": "^0.7.1",
+    "commander": "^14.0.3",
+    "dotenv": "^17.3.1",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.11.7",
+    "jose": "^5.2.0",
+    "nanoid": "^5.1.6",
+    "postgres": "^3.4.8",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.11.17",
+    "drizzle-kit": "^0.31.8",
+    "tsx": "^4.7.1",
+    "typescript": "^5.8.3"
+  }
+}

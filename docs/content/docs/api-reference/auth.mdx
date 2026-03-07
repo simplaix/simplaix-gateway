@@ -1,0 +1,81 @@
+---
+title: Auth
+description: User registration, login, and authentication endpoints.
+---
+
+## Register
+
+Create a new user account.
+
+```bash
+POST /api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "securepassword",
+  "name": "Admin"
+}
+```
+
+**Response** `201 Created`
+
+```json
+{
+  "token": "eyJ...",
+  "user": {
+    "id": "usr_...",
+    "email": "admin@example.com",
+    "name": "Admin",
+    "tenantId": "tnt_..."
+  }
+}
+```
+
+## Login
+
+Authenticate and receive a JWT.
+
+```bash
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "securepassword"
+}
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "token": "eyJ...",
+  "user": {
+    "id": "usr_...",
+    "email": "admin@example.com",
+    "name": "Admin",
+    "tenantId": "tnt_..."
+  }
+}
+```
+
+## Get Current User
+
+Retrieve the currently authenticated user's profile.
+
+```bash
+GET /api/v1/auth/me
+Authorization: Bearer <jwt>
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "id": "usr_...",
+  "email": "admin@example.com",
+  "name": "Admin",
+  "tenantId": "tnt_..."
+}
+```
