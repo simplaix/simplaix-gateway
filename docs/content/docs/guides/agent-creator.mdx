@@ -35,12 +35,12 @@ Register or log in to the Gateway to get access.
 
 ```bash
 # Register a new account
-curl -X POST http://localhost:3001/api/v1/auth/register \
+curl -X POST https://<your-gateway-url>/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email": "creator@example.com", "password": "securepass123", "name": "Agent Creator"}'
 
 # Login (returns JWT)
-curl -X POST http://localhost:3001/api/v1/auth/login \
+curl -X POST https://<your-gateway-url>/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "creator@example.com", "password": "securepass123"}'
 # Response: { "token": "eyJ...", "user": { "id": "...", ... } }
@@ -70,7 +70,7 @@ Save the `token` value -- you'll need it for all admin API calls.
 <Tab value="Via Commands">
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/admin/agents \
+curl -X POST https://<your-gateway-url>/api/v1/admin/agents \
   -H "Authorization: Bearer <your-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -124,7 +124,7 @@ Agents operate on a **whitelist model** -- by default they cannot access any pro
 
 ```bash
 # Grant agent access to specific providers and tools
-curl -X PUT http://localhost:3001/api/v1/admin/provider-access/agent/<agent-id> \
+curl -X PUT https://<your-gateway-url>/api/v1/admin/provider-access/agent/<agent-id> \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -156,7 +156,7 @@ pip install simplaix-gateway \
 
 ```bash
 OPENAI_API_KEY=sk-...
-GATEWAY_API_URL=http://localhost:3001
+GATEWAY_API_URL=https://<your-gateway-url>
 AGENT_RUNTIME_TOKEN=art_yourAgentToken...
 ```
 
@@ -296,7 +296,7 @@ Use the Runtime Token when your agent needs to call back into the Gateway (e.g.,
 
 ```bash
 # Agent calling the Unified MCP Endpoint using its Runtime Token
-curl -X POST http://localhost:3001/api/v1/mcp/mcp \
+curl -X POST https://<your-gateway-url>/api/v1/mcp/mcp \
   -H "Authorization: Bearer art_xKz2AbCdEfGhIjKlMnOpQrStUvWxYz12345" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
@@ -319,7 +319,7 @@ If your token is compromised, regenerate it (invalidates the old one):
 <Tab value="Via Commands">
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/admin/agents/<agent-id>/regenerate-token \
+curl -X POST https://<your-gateway-url>/api/v1/admin/agents/<agent-id>/regenerate-token \
   -H "Authorization: Bearer <admin-jwt>"
 # Response: { "runtime_token": "art_newTokenHere..." }
 ```
@@ -374,7 +374,7 @@ The Gateway provides an MCP Proxy that lets your agent route MCP tool calls thro
 <Tab value="Via Commands">
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/admin/tool-providers \
+curl -X POST https://<your-gateway-url>/api/v1/admin/tool-providers \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -493,11 +493,11 @@ Your agent can be disabled or re-enabled instantly without deletion:
 
 ```bash
 # Disable (all requests return 403)
-curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/disable \
+curl -X POST https://<your-gateway-url>/api/v1/admin/agents/<id>/disable \
   -H "Authorization: Bearer <jwt>"
 
 # Re-enable
-curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/enable \
+curl -X POST https://<your-gateway-url>/api/v1/admin/agents/<id>/enable \
   -H "Authorization: Bearer <jwt>"
 ```
 
@@ -519,7 +519,7 @@ curl -X POST http://localhost:3001/api/v1/admin/agents/<id>/enable \
 <Tab value="Via Commands">
 
 ```bash
-curl -X PUT http://localhost:3001/api/v1/admin/agents/<id> \
+curl -X PUT https://<your-gateway-url>/api/v1/admin/agents/<id> \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -593,7 +593,7 @@ Register this agent:
 <Tab value="Via Commands">
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/admin/agents \
+curl -X POST https://<your-gateway-url>/api/v1/admin/agents \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{

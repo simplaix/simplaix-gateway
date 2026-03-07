@@ -1,0 +1,112 @@
+---
+title: Quick Start
+description: Get Simplaix Gateway running locally with npm in minutes.
+---
+
+Get the Gateway running locally in under a minute using the `@simplaix/simplaix-gateway` npm package.
+
+> The server installed with `npm` should not be used in production. See full installation instructions [here](/docs/getting-started/deployment).
+
+## Prerequisites
+
+- **Node.js** 18+
+
+## Install
+
+```bash
+npm install -g @simplaix/simplaix-gateway
+```
+
+## Start the server
+
+```bash
+gateway init
+gateway start
+```
+
+`gateway init` creates a `.env` file with auto-generated secrets. `gateway start` starts the Gateway on `http://localhost:7521`.
+
+Then create your first admin user:
+
+```bash
+gateway admin create --email admin@example.com --password changeme
+```
+
+---
+
+## All Commands
+
+### `gateway init`
+
+Scaffolds a `.env` file with auto-generated `JWT_SECRET`, `CREDENTIAL_ENCRYPTION_KEY`, and a SQLite `DATABASE_URL`. Use `--force` to overwrite an existing `.env`.
+
+```bash
+gateway init --force
+```
+
+---
+
+### `gateway start`
+
+Starts the Gateway server. Defaults to SQLite at `./gateway.db` on port `7521`.
+
+| Flag | Description |
+|------|-------------|
+| `-p, --port <number>` | Port to listen on |
+| `--db <url>` | Database URL — overrides `DATABASE_URL` in `.env` |
+| `--tunnel` | Start a Cloudflare quick tunnel and print the public URL |
+| `--dashboard` | Start the built-in Next.js dashboard UI + Python agent |
+| `--dashboard-path <path>` | Path to dashboard directory (default: `./gateway-app`) |
+
+```bash
+# Custom port and PostgreSQL
+gateway start --port 8080 --db postgres://user:pass@localhost/gateway
+
+# With public tunnel + dashboard
+gateway start --tunnel --dashboard
+```
+
+When `--tunnel` and `--dashboard` are used together, the Gateway starts first, waits for the tunnel URL, then passes it to the dashboard.
+
+---
+
+### `gateway status`
+
+Shows the current config and verifies the database connection — DB mode, path/URL, whether secrets are set, and user count.
+
+```bash
+gateway status
+```
+
+---
+
+### `gateway admin create`
+
+Creates an admin user in the database.
+
+```bash
+gateway admin create --email admin@example.com --password secret --name "Alice"
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `-e, --email <email>` | Yes | Email address |
+| `-p, --password <password>` | Yes | Password |
+| `-n, --name <name>` | No | Display name |
+
+---
+
+### `gateway admin list`
+
+Lists all admin users.
+
+```bash
+gateway admin list
+```
+
+## Next Steps
+
+<Cards>
+  <Card title="Configuration" href="/docs/getting-started/configuration" />
+  <Card title="Architecture" href="/docs/concepts/architecture" />
+</Cards>

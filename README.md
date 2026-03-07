@@ -6,11 +6,14 @@ An open-source Agent Gateway that gives your AI agents a secure foundation — i
 
 AI agents are increasingly autonomous — they call APIs, access sensitive data, and take real-world actions on behalf of users. But most agent frameworks lack the infrastructure to do this safely:
 
-- **Who is this agent?** No standard identity or authentication model.
-- **What can it access?** No fine-grained access control for tools and APIs.
-- **Where are the credentials?** Secrets are hardcoded or scattered across configs.
-- **Did anyone approve this?** No human-in-the-loop for high-risk operations.
-- **What happened?** No audit trail when things go wrong.
+Simplaix Gateway is the infrastructure layer that answers all of these questions.
+
+| Question | The gap |
+|----------|---------|
+| **Who is this agent?** | Agents have no standard identity or authentication model. Any request claiming to be an agent is trusted implicitly. |
+| **What is it allowed to do?** | There is no fine-grained access control over which tools and APIs an agent can invoke on behalf of which user. |
+| **Did anyone approve this?** | High-risk operations — deleting data, sending messages, moving money — execute silently with no human checkpoint. |
+| **What actually happened?** | When something goes wrong, there is no structured record of ***who asked which agent to do what, and when***. |
 
 Simplaix Gateway sits between your agents and the outside world, solving all of these problems in one layer.
 

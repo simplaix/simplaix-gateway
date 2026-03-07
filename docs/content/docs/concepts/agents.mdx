@@ -7,12 +7,13 @@ Each agent in the Gateway has a virtual identity that includes its upstream URL,
 
 ## Agent Registration
 
-Agents are registered by admin users and linked to a tenant. Each agent has:
+Agents are registered by authorized admin/creator roles and linked to a tenant. Each agent has:
 
 - **Name** -- human-readable identifier
 - **Upstream URL** -- where the agent runtime is hosted
 - **Required Credentials** -- credential types the agent needs (e.g., `gateway_api`, `slack`)
 - **Kill Switch** -- ability to disable an agent immediately
+- **Runtime Token** -- one-time `art_...` token for agent-to-gateway calls
 
 ```bash
 POST /api/v1/admin/agents
@@ -26,13 +27,14 @@ POST /api/v1/admin/agents
 
 ## Agent Invocation Flow
 
-When the Gateway invokes an agent (via `/v1/agents/:id/invoke`), it performs a full pre-flight:
+When the Gateway invokes an agent (via `/api/v1/agents/:id/invoke`), it performs a full pre-flight:
 
-1. **Authenticate** the user via JWT
+1. **Authenticate** via flexible auth (JWT, API key + JWT/User-ID, or runtime token where applicable)
 2. **Load agent** and check tenant isolation + kill switch
 3. **Resolve credentials** -- if `requiredCredentials` are configured and any are missing, return 401 with auth URLs
 4. **Inject headers** -- user identity + resolved credentials as `X-Credential-*`
-5. **Forward** to the agent's `upstreamUrl` and stream the response back
+5. **Issue session token (when enabled)** -- attach `X-Gateway-Session-Token` so downstream MCP calls can preserve end-user identity
+6. **Forward** to the agent's `upstreamUrl` and stream the response back
 
 ## Injected Headers
 
@@ -47,9 +49,17 @@ When forwarding requests to agent runtimes, the Gateway injects these headers:
 | `X-Tenant-ID` | Tenant ID |
 | `X-Gateway-Agent-ID` | Agent UUID |
 | `X-Gateway-Request-ID` | Unique request ID |
+| `X-Gateway-Session-Token` | Short-lived session JWT for MCP callbacks as the real end-user |
 | `X-Credential-{service}` | Resolved credential value per service type |
+| `Authorization` | Optional upstream bearer token when `upstreamSecret` is configured |
 
-The agent runtime can use `X-Gateway-Agent-ID` to identify itself when calling back into the Gateway's tool proxy (as `X-Agent-Id`).
+For MCP callback routes, runtimes typically send `X-Agent-Id` plus `X-Gateway-Session-Token`, or authenticate directly with the agent runtime token (`art_...`).
+
+## Runtime Token Lifecycle
+
+- Created once on `POST /api/v1/admin/agents`
+- Can be rotated with `POST /api/v1/admin/agents/:id/regenerate-token`
+- Stored hashed in the database; plaintext is returned only when created/rotated
 
 ## Kill Switch
 

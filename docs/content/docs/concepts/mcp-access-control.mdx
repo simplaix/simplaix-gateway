@@ -17,7 +17,7 @@ Access rules are scoped to a **subject** -- the entity making the request:
 | `user` | An individual end-user (by user ID) | **Deny** (whitelist model) |
 | `agent` | A registered agent (by agent ID) | **Deny** (whitelist model) |
 
-All subjects are denied access to all providers by default. An admin must explicitly grant access to each provider by creating `allow` rules. This whitelist model ensures no provider is accidentally exposed without deliberate configuration.
+All subjects are denied access to all providers by default. An admin must explicitly grant access to each provider by creating `allow` (or `require_confirmation`) rules. This whitelist model ensures no provider is accidentally exposed without deliberate configuration.
 
 ## Provider-Level ACL
 
@@ -38,9 +38,9 @@ Each rule grants or denies a subject access to a provider:
 When multiple rules match, the Gateway evaluates in this order (first match wins):
 
 1. Explicit **user deny** → denied
-2. Explicit **user allow** → allowed
+2. Explicit **user allow/require_confirmation** → allowed
 3. Explicit **agent deny** → denied
-4. Explicit **agent allow** → allowed
+4. Explicit **agent allow/require_confirmation** → allowed
 5. **Wildcard** (`*`) provider rules
 6. **Default** → deny for all subjects (whitelist model)
 
@@ -107,7 +107,7 @@ GET /api/v1/admin/provider-access?subject_type=agent&subject_id={agentId}
 **Bulk upsert rules for an agent:**
 
 ```bash
-curl -X PUT http://localhost:3001/api/v1/admin/provider-access/agent/<agent-id> \
+curl -X PUT https://<your-gateway-url>/api/v1/admin/provider-access/agent/<agent-id> \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -122,7 +122,7 @@ curl -X PUT http://localhost:3001/api/v1/admin/provider-access/agent/<agent-id> 
 **Create a single rule:**
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/admin/provider-access \
+curl -X POST https://<your-gateway-url>/api/v1/admin/provider-access \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -138,7 +138,7 @@ curl -X POST http://localhost:3001/api/v1/admin/provider-access \
 **Test policy evaluation (dry run):**
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/admin/provider-access/evaluate \
+curl -X POST https://<your-gateway-url>/api/v1/admin/provider-access/evaluate \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -147,8 +147,10 @@ curl -X POST http://localhost:3001/api/v1/admin/provider-access/evaluate \
     "toolName": "slack_send_message",
     "agentId": "agent-id"
   }'
-# Response: { "action": "require_confirmation", "rule": { ... } }
+# Response: { "action": "require_confirmation", "risk": "high", "matchedRule": { ... } }
 ```
+
+If there are zero DB rules available for `evaluate`, the gateway falls back to `src/config.ts` policy rules. If DB rules exist but none match the tool pattern, the result is deny. In normal MCP proxy/unified flows, provider-level ACL still gates access first (default deny).
 
 ## Examples
 

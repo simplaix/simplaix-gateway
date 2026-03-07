@@ -1,122 +1,150 @@
 ---
-title: App Builder
+title: App Builder Guide
 description: Build frontend applications that invoke AI agents through Simplaix Gateway.
 ---
 
-This guide is for developers who **build applications** (web apps, mobile apps, chatbots) that invoke AI agents through the Simplaix Gateway. Your app authenticates end-users, invokes agents, handles credential flows, and renders streaming responses.
+This guide is for developers building applications — web apps, dashboards, chatbots — that invoke AI agents through the Gateway. Your app authenticates users, invokes agents, handles credential flows, and responds to human-in-the-loop confirmations.
 
 ## Overview
 
-As an App Builder, you will:
+As an app builder you will:
 
-1. **Authenticate** your end-users via Gateway JWT or an external identity provider
-2. **Invoke agents** through the Gateway's agent invoke endpoint
-3. **Handle credential flows** -- prompt users to connect services when credentials are missing
-4. **Render responses** -- handle both JSON and SSE streaming responses
+1. **Authenticate** users and obtain a JWT
+2. **Invoke agents** via the Gateway's invoke endpoint
+3. **Handle credential flows** — prompt users to connect missing services
+4. **Handle confirmations** — display approval prompts for high-risk operations
+5. **Render responses** — JSON or SSE streaming
 
-## Quick Start
+---
 
-### Step 1: Authenticate the User
+## Step 1: Authenticate the User
 
-Your app needs a JWT to call the Gateway. Two options:
-
-**Option A: Gateway-issued JWT** (simplest for prototyping)
+### Option A: Gateway-issued JWT
 
 ```typescript
-// Login to get a JWT
-const res = await fetch('http://localhost:3001/api/v1/auth/login', {
+const res = await fetch('https://<your-gateway-url>/api/v1/auth/login', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    email: 'user@example.com',
-    password: 'password123',
-  }),
+  body: JSON.stringify({ email: 'user@example.com', password: 'password' }),
 });
-const { token } = await res.json();
+const { token, user } = await res.json();
 // Store token for subsequent requests
 ```
 
-**Option B: External Identity Provider** (recommended for production)
+To refresh a token:
 
-Configure your IdP (Auth0, Azure AD, Okta, etc.) in the Gateway's `.env`:
+```typescript
+const res = await fetch('https://<your-gateway-url>/api/v1/auth/refresh', {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${token}` },
+});
+const { token: newToken } = await res.json();
+```
+
+### Option B: External Identity Provider (recommended for production)
+
+Configure your IdP in the Gateway's `.env` and pass your IdP-issued JWT directly:
 
 ```bash
+# Auth0 / OIDC
 JWT_EXTERNAL_ISSUERS='[{
   "issuer": "https://your-tenant.auth0.com/",
   "jwksUri": "https://your-tenant.auth0.com/.well-known/jwks.json",
   "audience": "simplaix-gateway"
 }]'
+
+# Azure AD
+JWT_EXTERNAL_ISSUERS='[{
+  "issuer": "https://login.microsoftonline.com/TENANT/v2.0",
+  "jwksUri": "https://login.microsoftonline.com/TENANT/discovery/v2.0/keys",
+  "audience": "api://simplaix-gateway"
+}]'
 ```
 
-Then pass your IdP-issued JWT directly to the Gateway.
+### Authentication methods
 
-### Step 2: Pre-check Credentials
+The Gateway's flexible auth middleware accepts tokens in three ways:
 
-Before invoking an agent, check if the user has all required credentials:
+| Method | Format |
+|--------|--------|
+| Authorization header | `Authorization: Bearer <token>` |
+| Query param (JWT) | `?_token=<token>` |
+| Query param (API key) | `?_api_key=gk_xxx` |
+
+Query params are useful for CopilotKit's `HttpAgent` which cannot set custom headers.
+
+---
+
+## Step 2: Invoke an Agent
 
 ```typescript
-const agentId = 'abc123';
-
-const check = await fetch(
-  `http://localhost:3001/api/v1/agents/${agentId}/credentials-check`,
-  { headers: { Authorization: `Bearer ${token}` } }
-);
-
-const result = await check.json();
-
-if (result.code === 'CREDENTIALS_REQUIRED') {
-  // Show "Connect" buttons for missing services
-  for (const [service, url] of Object.entries(result.authUrls)) {
-    console.log(`Connect ${service}: ${url}`);
-  }
-} else {
-  console.log('All credentials available, ready to invoke!');
-}
+const res = await fetch(`https://<your-gateway-url>/api/v1/agents/${agentId}/invoke`, {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    messages: [{ role: 'user', content: 'Show me my recent transactions' }],
+  }),
+});
 ```
 
-### Step 3: Invoke the Agent
+The request body is forwarded as-is to the agent runtime — structure it however your agent expects.
+
+### Handle the response
+
+Agents can respond with JSON or an SSE stream:
 
 ```typescript
-const response = await fetch(
-  `http://localhost:3001/api/v1/agents/${agentId}/invoke`,
-  {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      message: 'Show me my recent transactions',
-    }),
-  }
-);
-
-// Check for credential requirements
-if (response.status === 401) {
-  const error = await response.json();
+if (res.status === 401) {
+  const error = await res.json();
   if (error.code === 'CREDENTIALS_REQUIRED') {
-    // Redirect user to connect missing services
+    // Prompt user to connect missing services (see Credential Flow below)
     showAuthPrompt(error.missing, error.authUrls);
     return;
   }
 }
 
-// Handle the response
-const contentType = response.headers.get('Content-Type') || '';
+const contentType = res.headers.get('Content-Type') ?? '';
 
 if (contentType.includes('text/event-stream')) {
-  // Handle SSE streaming response
-  await handleSSEStream(response);
+  await handleSSEStream(res);
 } else {
-  // Handle JSON response
-  const data = await response.json();
+  const { data } = await res.json();
   console.log(data);
 }
 ```
 
-## Handling SSE Streaming
+#### Error codes
 
-Many agents return SSE (Server-Sent Events) for real-time streaming. The Gateway transparently forwards these streams.
+| Code | Meaning |
+|------|---------|
+| `CREDENTIALS_REQUIRED` | One or more credentials are missing for this agent |
+| `AGENT_NOT_FOUND` | No agent with that ID exists |
+| `AGENT_DISABLED` | Agent has been disabled (kill switch) |
+| `TENANT_MISMATCH` | Agent belongs to a different tenant |
+| `RUNTIME_ERROR` | The upstream agent runtime returned an error |
+
+### Pre-check credentials (optional)
+
+Before invoking, you can check whether all credentials are in place:
+
+```typescript
+const res = await fetch(
+  `https://<your-gateway-url>/api/v1/agents/${agentId}/credentials-check`,
+  { headers: { Authorization: `Bearer ${token}` } },
+);
+
+if (res.status === 401) {
+  const { missing, authUrls } = await res.json();
+  // Show "Connect" buttons before proceeding
+}
+```
+
+---
+
+## Step 3: Handle SSE Streaming
 
 ```typescript
 async function handleSSEStream(response: Response) {
@@ -130,204 +158,206 @@ async function handleSSEStream(response: Response) {
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+    buffer = lines.pop() ?? '';
 
     for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        if (data === '[DONE]') return;
-
-        try {
-          const event = JSON.parse(data);
-          // Process the event (depends on agent protocol)
-          handleAgentEvent(event);
-        } catch {
-          // Non-JSON SSE data
-          console.log('Agent:', data);
-        }
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6);
+      if (data === '[DONE]') return;
+      try {
+        const event = JSON.parse(data);
+        handleAgentEvent(event);
+      } catch {
+        console.log('Agent:', data);
       }
     }
   }
 }
 ```
 
-## Credential Flow
+---
 
-When an agent requires credentials the user hasn't connected yet, the Gateway returns a `401` with details:
+## Step 4: Credential Flow
+
+When credentials are missing, the Gateway returns a `401` with this shape:
 
 ```json
 {
   "code": "CREDENTIALS_REQUIRED",
-  "missing": ["stripe_api", "slack"],
+  "missing": ["github", "slack"],
   "authUrls": {
-    "stripe_api": "/auth/connect?service=stripe_api",
-    "slack": "/auth/connect?service=slack"
+    "github": "https://gateway.example.com/auth/connect?service=github",
+    "slack": "https://gateway.example.com/auth/connect?service=slack"
   },
-  "message": "Authentication required for: stripe_api, slack"
+  "message": "Authentication required for: github, slack"
 }
 ```
 
-### Implementing the Auth Flow
+Direct the user to the `authUrls` for each missing service (OAuth redirect or popup). Once they complete the flow, retry the agent invocation.
 
-1. **Show a prompt** to the user with "Connect" buttons for each missing service
-2. **Open the auth URL** (e.g., in a popup or redirect) -- this is the `connectUrl` configured by the admin on the credential provider
-3. **Store the credential** by calling the Gateway's credential endpoint
-4. **Retry** the agent invocation
+### Storing a manual credential (API token or JWT)
 
-**Example: Storing a JWT credential (e.g., user's API token)**
+For services that use API keys rather than OAuth:
 
 ```typescript
-// User enters their API token in a form
-async function connectService(serviceType: string, apiToken: string) {
-  // Look up the credential provider
-  const providerRes = await fetch(
-    `http://localhost:3001/api/v1/credential-providers/by-service/${serviceType}`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  const { provider } = await providerRes.json();
+// 1. Look up the credential provider
+const providerRes = await fetch(
+  `https://<your-gateway-url>/api/v1/credential-providers/by-service/${serviceType}`,
+  { headers: { Authorization: `Bearer ${token}` } },
+);
+const { provider } = await providerRes.json();
 
-  // Store the credential
-  await fetch('http://localhost:3001/api/v1/credentials/jwt', {
+// 2. Store the credential
+await fetch('https://<your-gateway-url>/api/v1/credentials/jwt', {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ providerId: provider.id, token: apiToken }),
+});
+
+// 3. Retry agent invocation
+```
+
+For API key credentials:
+
+```typescript
+await fetch('https://<your-gateway-url>/api/v1/credentials/apikey', {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ providerId: provider.id, apiKey: keyValue }),
+});
+```
+
+### List and delete credentials
+
+```typescript
+// List
+const { credentials } = await fetch('https://<your-gateway-url>/api/v1/credentials', {
+  headers: { Authorization: `Bearer ${token}` },
+}).then((r) => r.json());
+
+// Delete
+await fetch(`https://<your-gateway-url>/api/v1/credentials/${credentialId}`, {
+  method: 'DELETE',
+  headers: { Authorization: `Bearer ${token}` },
+});
+```
+
+---
+
+## Step 5: Human-in-the-Loop Confirmations
+
+When an agent triggers a tool that requires confirmation, the Gateway pauses execution and emits an SSE event. Your app listens on the confirmation stream and responds.
+
+### Listen for confirmations
+
+```typescript
+// EventSource doesn't support custom headers — use _token query param
+const stream = new EventSource(
+  `https://<your-gateway-url>/api/v1/stream?_token=${token}`
+);
+
+stream.addEventListener('CONFIRMATION_REQUIRED', (event) => {
+  const req = JSON.parse(event.data);
+  // {
+  //   id: "conf_123",
+  //   tool: { name: "delete_file", description: "...", provider: { id, name } },
+  //   arguments: { path: "/report.pdf" },
+  //   risk: { level: "high" },
+  //   agent: { id: "agent_1", name: "File Manager" },
+  //   timestamp: "2025-01-15T10:30:00Z"
+  // }
+  showConfirmationDialog(req);
+});
+
+stream.addEventListener('CONFIRMATION_RESOLVED', (event) => {
+  const { id, confirmed } = JSON.parse(event.data);
+  dismissConfirmationDialog(id);
+});
+
+// 30-second heartbeat keeps the connection alive
+stream.addEventListener('heartbeat', () => {});
+```
+
+### Confirm or reject
+
+```typescript
+async function respond(confirmationId: string, approved: boolean, reason?: string) {
+  const action = approved ? 'confirm' : 'reject';
+  await fetch(`https://<your-gateway-url>/api/v1/confirmations/${confirmationId}/${action}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      providerId: provider.id,
-      token: apiToken,
-    }),
+    body: JSON.stringify({ reason }),
   });
-
-  // Credential stored! Now retry the agent invocation.
 }
 ```
 
-## CopilotKit Integration
-
-The Gateway integrates with [CopilotKit](https://copilotkit.ai/) for building AI-powered chat interfaces. The `gateway-app` demonstrates a full CopilotKit + AG-UI integration.
-
-### Setup
-
-1. **Configure the CopilotKit runtime** to proxy through the Gateway:
+### Poll for pending confirmations (non-SSE fallback)
 
 ```typescript
-// gateway-app/src/app/api/copilotkit/route.ts
-import {
-  CopilotRuntime,
-  ExperimentalEmptyAdapter,
-  copilotRuntimeNextJSAppRouterEndpoint,
-} from '@copilotkit/runtime';
+const { confirmations } = await fetch(
+  'https://<your-gateway-url>/api/v1/confirmations/list?status=pending',
+  { headers: { Authorization: `Bearer ${token}` } },
+).then((r) => r.json());
+```
 
-const AGENT_URL = process.env.AGENT_URL || 'http://localhost:8000';
-const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:3001';
+---
 
-// The CopilotKit runtime invokes agents through the Gateway
+## CopilotKit Integration
+
+The Gateway works natively with [CopilotKit](https://copilotkit.ai/). Point the CopilotKit runtime at the Gateway's invoke endpoint:
+
+```typescript
+// app/api/copilotkit/route.ts
+import { CopilotRuntime, ExperimentalEmptyAdapter, copilotRuntimeNextJSAppRouterEndpoint } from '@copilotkit/runtime';
+
 const runtime = new CopilotRuntime({
   remoteEndpoints: [
     {
-      url: `${GATEWAY_URL}/api/v1/agents/<agent-id>/invoke`,
+      // Use _token query param since CopilotKit's HttpAgent cannot set headers
+      url: `${process.env.GATEWAY_API_URL}/api/v1/agents/${agentId}/invoke?_token=${userToken}`,
     },
   ],
 });
+
+export const POST = copilotRuntimeNextJSAppRouterEndpoint({
+  runtime,
+  serviceAdapter: new ExperimentalEmptyAdapter(),
+  endpoint: '/api/copilotkit',
+}).POST;
 ```
 
-2. **Use the CopilotKit provider** in your React app:
-
 ```tsx
+// In your React app
 import { CopilotKit } from '@copilotkit/react-core';
 import { CopilotChat } from '@copilotkit/react-ui';
 
-function App() {
+export function Chat() {
   return (
     <CopilotKit runtimeUrl="/api/copilotkit">
-      <CopilotChat
-        labels={{ title: 'Gateway Assistant' }}
-        instructions="You are a helpful gateway management assistant."
-      />
+      <CopilotChat labels={{ title: 'Assistant' }} />
     </CopilotKit>
   );
 }
 ```
 
-3. **Handle auth** by passing the JWT via query parameters (for CopilotKit's HttpAgent which cannot set custom headers):
+---
+
+## MCP Proxy
+
+To call MCP servers directly from your app, route through the Gateway's MCP proxy — it handles auth, policy enforcement, and audit logging transparently:
 
 ```typescript
-// The Gateway's flexibleAuthMiddleware accepts _token and _api_key query params
-const agentUrl = `${GATEWAY_URL}/api/v1/agents/${agentId}/invoke?_token=${jwt}`;
-```
-
-## Confirmation Flow (Human-in-the-Loop)
-
-If the agent triggers a tool that requires confirmation, the Gateway pauses the request and emits an SSE event. Your app can listen for these:
-
-### Listening for Confirmation Requests
-
-```typescript
-// Connect to SSE stream
-const eventSource = new EventSource(
-  `http://localhost:3001/api/v1/stream`,
-  // Note: EventSource doesn't support custom headers,
-  // use a polyfill or fetch-based SSE for JWT auth
-);
-
-eventSource.addEventListener('CONFIRMATION_REQUIRED', (event) => {
-  const confirmation = JSON.parse(event.data);
-  // Show confirmation UI
-  showConfirmationCard({
-    id: confirmation.id,
-    toolName: confirmation.action,
-    arguments: confirmation.params,
-    risk: confirmation.risk,
-  });
-});
-```
-
-### Responding to Confirmations
-
-```typescript
-// Confirm
-await fetch(`http://localhost:3001/api/v1/confirmation/${confirmationId}/confirm`, {
-  method: 'POST',
-  headers: {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({ reason: 'Looks good' }),
-});
-
-// Or reject
-await fetch(`http://localhost:3001/api/v1/confirmation/${confirmationId}/reject`, {
-  method: 'POST',
-  headers: {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({ reason: 'Too risky' }),
-});
-```
-
-### Polling Fallback
-
-If SSE is not feasible, poll for pending confirmations:
-
-```typescript
-const res = await fetch('http://localhost:3001/api/v1/stream/pending', {
-  headers: { Authorization: `Bearer ${token}` },
-});
-const { pending } = await res.json();
-```
-
-## Using the MCP Proxy from Frontend
-
-If your app directly communicates with MCP servers (e.g., for a tool marketplace), route through the Gateway's MCP Proxy:
-
-```typescript
-const providerId = 'slack-provider-id';
-
-// Standard MCP Streamable HTTP -- just point to the Gateway proxy
-const response = await fetch(
-  `http://localhost:3001/api/v1/mcp-proxy/${providerId}/mcp`,
+const res = await fetch(
+  `https://<your-gateway-url>/api/v1/mcp-proxy/${providerId}/mcp`,
   {
     method: 'POST',
     headers: {
@@ -335,128 +365,31 @@ const response = await fetch(
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
     },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'tools/list',
-      id: 1,
-    }),
-  }
+    body: JSON.stringify({ jsonrpc: '2.0', method: 'tools/list', id: 1 }),
+  },
 );
 ```
 
-The proxy handles authentication, ACL, policy enforcement, and audit logging transparently.
+---
 
-## Example: Complete React Chat App
-
-```tsx
-import { useState } from 'react';
-
-function ChatApp({ agentId, token }: { agentId: string; token: string }) {
-  const [messages, setMessages] = useState<string[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [authPrompt, setAuthPrompt] = useState<{
-    missing: string[];
-    authUrls: Record<string, string>;
-  } | null>(null);
-
-  async function sendMessage() {
-    if (!input.trim()) return;
-    setLoading(true);
-    setMessages((prev) => [...prev, `You: ${input}`]);
-
-    try {
-      const res = await fetch(
-        `http://localhost:3001/api/v1/agents/${agentId}/invoke`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ message: input }),
-        }
-      );
-
-      if (res.status === 401) {
-        const error = await res.json();
-        if (error.code === 'CREDENTIALS_REQUIRED') {
-          setAuthPrompt({ missing: error.missing, authUrls: error.authUrls });
-          return;
-        }
-      }
-
-      const contentType = res.headers.get('Content-Type') || '';
-      if (contentType.includes('text/event-stream')) {
-        // Handle streaming
-        const reader = res.body!.getReader();
-        const decoder = new TextDecoder();
-        let agentMsg = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          agentMsg += decoder.decode(value, { stream: true });
-        }
-        setMessages((prev) => [...prev, `Agent: ${agentMsg}`]);
-      } else {
-        const data = await res.json();
-        setMessages((prev) => [...prev, `Agent: ${JSON.stringify(data.data)}`]);
-      }
-    } catch (err) {
-      setMessages((prev) => [...prev, `Error: ${err}`]);
-    } finally {
-      setLoading(false);
-      setInput('');
-    }
-  }
-
-  return (
-    <div>
-      {authPrompt && (
-        <div className="auth-prompt">
-          <p>Please connect the following services:</p>
-          {authPrompt.missing.map((service) => (
-            <a key={service} href={authPrompt.authUrls[service]}>
-              Connect {service}
-            </a>
-          ))}
-        </div>
-      )}
-      <div className="messages">
-        {messages.map((msg, i) => (
-          <div key={i}>{msg}</div>
-        ))}
-      </div>
-      <input
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-        disabled={loading}
-      />
-      <button onClick={sendMessage} disabled={loading}>
-        Send
-      </button>
-    </div>
-  );
-}
-```
-
-## API Reference Quick List
+## API Reference
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/auth/login` | POST | Get a JWT |
-| `/api/v1/auth/register` | POST | Create account |
+| `/api/v1/auth/login` | POST | Login — returns JWT + user |
+| `/api/v1/auth/register` | POST | Register a new user |
+| `/api/v1/auth/refresh` | POST | Refresh JWT |
 | `/api/v1/agents/:id/invoke` | POST | Invoke an agent |
 | `/api/v1/agents/:id/credentials-check` | GET | Pre-check credentials |
 | `/api/v1/agents/:id` | GET | Get agent info |
 | `/api/v1/credentials` | GET | List user credentials |
-| `/api/v1/credentials/jwt` | POST | Store JWT credential |
+| `/api/v1/credentials/jwt` | POST | Store JWT / token credential |
 | `/api/v1/credentials/apikey` | POST | Store API key credential |
+| `/api/v1/credentials/:id` | DELETE | Delete a credential |
 | `/api/v1/credential-providers` | GET | List credential providers |
-| `/api/v1/stream` | GET | SSE event stream |
-| `/api/v1/stream/pending` | GET | Pending confirmations |
-| `/api/v1/confirmation/:id/confirm` | POST | Confirm a request |
-| `/api/v1/confirmation/:id/reject` | POST | Reject a request |
+| `/api/v1/credential-providers/by-service/:type` | GET | Look up provider by service type |
+| `/api/v1/stream` | GET | SSE confirmation stream |
+| `/api/v1/confirmations/list` | GET | List confirmations (poll fallback) |
+| `/api/v1/confirmations/:id/confirm` | POST | Confirm a request |
+| `/api/v1/confirmations/:id/reject` | POST | Reject a request |
 | `/api/v1/mcp-proxy/:providerId/mcp` | POST | MCP proxy (Streamable HTTP) |

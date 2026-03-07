@@ -1,39 +1,56 @@
 ---
-title: Overview
-description: Get up and running with Simplaix Gateway in minutes.
+title: What is Simplaix Gateway?
+description: Enterprise-grade Agent Gateway providing identity, security, credential management, and policy enforcement for AI agents.
 ---
 
-This guide will help you get Simplaix Gateway running locally. The Gateway is a Hono-based server that provides identity, security, credential management, and policy enforcement for AI agents. It supports multiple agent protocols including MCP, CopilotKit, AG-UI/Strands, and any HTTP-based agent runtime.
+Simplaix Gateway is an enterprise-grade Agent Gateway that provides identity, security, credential management, and policy enforcement for AI agents. It supports multiple agent protocols including [MCP](https://modelcontextprotocol.io/), CopilotKit, AG-UI/Strands, and any HTTP-based agent runtime.
 
-## Prerequisites
+## The problem
 
-- **Node.js** 18+
-- **pnpm** package manager
-- **Python 3.12+** (optional, for the agent runtime)
+Deploying AI agents in production surfaces a set of questions that no agent framework answers out of the box:
 
-## Quick Start
+Simplaix Gateway is the infrastructure layer that answers all of these questions.
 
-```bash
-# Clone the repository
-git clone https://github.com/simplaix/simplaix-gateway.git
-cd simplaix-gateway
+| Question | The gap |
+|----------|---------|
+| **Who is this agent?** | Agents have no standard identity or authentication model. Any request claiming to be an agent is trusted implicitly. |
+| **What is it allowed to do?** | There is no fine-grained access control over which tools and APIs an agent can invoke on behalf of which user. |
+| **Did anyone approve this?** | High-risk operations — deleting data, sending messages, moving money — execute silently with no human checkpoint. |
+| **What actually happened?** | When something goes wrong, there is no structured record of ***who asked which agent to do what, and when***. |
 
-# Install dependencies
-pnpm install
 
-# Copy environment template
-cp .env.example .env
+## Key Features
 
-# Start the Gateway server
-pnpm dev
-```
+- **Multi-Protocol Agent Routing** -- Route requests to any HTTP-based agent runtime (MCP servers, CopilotKit agents, Strands/AG-UI agents, custom runtimes)
+- **Virtual Agent Identity** -- Register agents with upstream URLs, kill switch, and tenant isolation
+- **Dual Authentication** -- JWT for admins and end-users, API Keys (`gk_`) for server-to-server
+- **Credential Vault** -- Encrypted per-user credential storage with automatic resolution and injection
+- **Policy Engine** -- Configurable rules: allow, deny, or require human confirmation per tool
+- **Human-in-the-Loop Confirmation** -- SSE-based real-time confirmation workflow for sensitive operations
+- **Comprehensive Audit Trail** -- Track every tool call with full context and timing
+- **Multi-Tenancy** -- Tenant isolation across agents, credentials, and users
+- **Credential SDKs** -- Python and TypeScript SDKs for agents to resolve user credentials
 
-The Gateway will start on `http://localhost:3001`.
+## Supported Agent Protocols
 
-## Next Steps
+| Protocol | Integration Point | Description |
+|----------|------------------|-------------|
+| **MCP** | `/api/v1/mcp/*` | JSON-RPC tool calls to MCP servers with policy enforcement |
+| **Any agent runtime** | `/api/v1/agents/:id/invoke` | Any HTTP-based agent runtime (framework-agnostic) |
+
+## Guides by Role
 
 <Cards>
-  <Card title="Installation" href="/docs/getting-started/installation" />
-  <Card title="Configuration" href="/docs/getting-started/configuration" />
+  <Card title="Agent Creator Guide" href="/docs/guides/agent-creator" description="Build AI agents that connect to the Gateway for identity, credentials, and tool routing." />
+  <Card title="App Builder Guide" href="/docs/guides/app-builder" description="Build apps that invoke agents, handle credentials, and render streaming responses." />
+  <Card title="Gateway Admin Guide" href="/docs/guides/gateway-admin" description="Deploy, configure, and operate a Gateway instance with users, policies, and monitoring." />
+</Cards>
+
+## Quick Links
+
+<Cards>
+  <Card title="Getting Started" href="/docs/getting-started" />
   <Card title="Architecture" href="/docs/concepts/architecture" />
+  <Card title="Authentication" href="/docs/authentication" />
+  <Card title="API Reference" href="/docs/api-reference/auth" />
 </Cards>

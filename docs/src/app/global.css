@@ -1,3 +1,12 @@
 @import 'tailwindcss';
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
+
+/* Mermaid zoom modal */
+[data-rmiz-modal-overlay='visible'] {
+  background-color: hsl(var(--background) / 0.9);
+  backdrop-filter: blur(4px);
+}
+[data-rmiz-modal-img] {
+  border-radius: 0.5rem;
+}

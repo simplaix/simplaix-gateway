@@ -17,7 +17,7 @@ pip install simplaix-credential-sdk
 from simplaix_credential_sdk import create_credential_client
 
 client = create_credential_client(
-    gateway_url="http://localhost:3001/api",
+    gateway_url="https://<your-gateway-url>/api",
     api_key="gk_xxx"
 )
 
@@ -40,7 +40,7 @@ The SDK provides Starlette middleware for automatic context setup:
 from simplaix_credential_sdk import create_credential_client
 
 client = create_credential_client(
-    gateway_url="http://localhost:3001/api",
+    gateway_url="https://<your-gateway-url>/api",
     api_key="gk_xxx"
 )
 
@@ -56,7 +56,7 @@ The middleware automatically extracts `X-Credential-*` headers and makes them av
 from simplaix_credential_sdk import create_credential_client
 
 client = create_credential_client(
-    gateway_url="http://localhost:3001/api",
+    gateway_url="https://<your-gateway-url>/api",
     api_key="gk_xxx"
 )
 
