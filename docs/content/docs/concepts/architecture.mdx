@@ -3,14 +3,14 @@ title: System Architecture
 description: Overview of the Simplaix Gateway architecture and how its components interact.
 ---
 
-The Simplaix Gateway sits between client applications and upstream agent runtimes, providing a unified security, identity, and credential management layer. It is protocol-agnostic -- the same Gateway can route to MCP servers, CopilotKit agents, Strands/AG-UI agents, or any custom HTTP service.
+The Simplaix Gateway sits between client applications and upstream agent runtimes, providing a unified security, identity, and credential management layer. It is protocol-agnostic -- the same Gateway can route to MCP servers, or any custom HTTP service.
 
 ## Architecture Diagram
 
 ```mermaid
 flowchart TB
     subgraph clients [Clients]
-        FE[Dashboard / CopilotKit]
+        FE[Dashboard]
         AI[AI Agent Runtime]
         SDK[Credential SDK]
     end
@@ -55,8 +55,6 @@ flowchart TB
 
     subgraph upstreams [Upstream Agent Runtimes]
         MCP1[MCP Server]
-        CK[CopilotKit Agent]
-        Strands[Strands / AG-UI Agent]
         Custom[Custom HTTP Agent]
     end
 
