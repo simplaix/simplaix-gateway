@@ -24,7 +24,7 @@ Simplaix Gateway sits between your agents and the outside world, solving all of 
 ## Key Features
 
 - **Agent Identity** — Register agents with runtime tokens, kill switches, and tenant isolation
-- **Multi-Protocol Routing** — Route to any HTTP agent runtime: MCP servers, CopilotKit, Strands/AG-UI, or custom endpoints
+- **Multi-Protocol Routing** — Route to any HTTP agent runtime: MCP servers, or custom endpoints
 - **MCP Proxy with ACL** — Provider-based tool routing with access control and policy enforcement
 - **Credential Vault** — Encrypted per-user credential storage with automatic injection into agent requests
 - **Policy Engine** — Allow, deny, or require human confirmation per tool, with risk-level classification
@@ -37,7 +37,7 @@ Simplaix Gateway sits between your agents and the outside world, solving all of 
 ```mermaid
 flowchart TB
     subgraph clients [Clients]
-        FE[Dashboard / CopilotKit]
+        FE[Dashboard]
         AI[AI Agent Runtime]
         SDK[Credential SDK]
     end
@@ -80,8 +80,6 @@ flowchart TB
 
     subgraph upstreams [Upstream Agent Runtimes]
         MCP1[MCP Server]
-        CK[CopilotKit Agent]
-        Strands[Strands / AG-UI Agent]
         Custom[Custom HTTP Agent]
     end
 
@@ -106,8 +104,6 @@ flowchart TB
     MCPProxy --> HeaderInjector
     AgentInvoke --> HeaderInjector
     HeaderInjector --> MCP1
-    HeaderInjector --> CK
-    HeaderInjector --> Strands
     HeaderInjector --> Custom
 
     AgentSvc --> DB
