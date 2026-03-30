@@ -4,7 +4,15 @@
   "type": "module",
   "description": "Lobster Shell plugin for Simplaix Gateway tool policy & audit integration",
   "openclaw": {
-    "extensions": ["./index.ts"]
+    "extensions": ["./index.ts"],
+    "compat": {
+      "pluginApi": ">=2026.1.26",
+      "minGatewayVersion": "2026.1.26"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24-beta.2",
+      "pluginSdkVersion": "2026.3.24-beta.2"
+    }
   },
   "peerDependencies": {
     "lobster-shell": ">=2026.1.26"
